@@ -102,6 +102,53 @@ def check_credentials(client_id: str, client_secret: str, refresh_token: str) ->
     return info
 
 
+def describe_video(video_id: str, credentials: Credentials) -> dict[str, str]:
+    """Report which channel a video landed on and how YouTube processed it.
+
+    Answers the two questions that look identical from the outside when an
+    upload "succeeds" but nothing appears in Studio: did it go to the intended
+    channel, and did YouTube accept the file? A very short clip can be
+    rejected or fail processing after the API has already returned an id.
+    """
+    youtube = build("youtube", "v3", credentials=credentials, cache_discovery=False)
+    resp = (
+        youtube.videos()
+        .list(part="snippet,status,processingDetails,contentDetails", id=video_id)
+        .execute()
+    )
+    items = resp.get("items") or []
+    if not items:
+        return {
+            "found": "no",
+            "note": (
+                "No video with this id is visible to these credentials. That "
+                "usually means it belongs to a different channel than the one "
+                "this refresh token authorises."
+            ),
+        }
+
+    v = items[0]
+    snippet, status = v.get("snippet", {}), v.get("status", {})
+    out = {
+        "found": "yes",
+        "channel_title": snippet.get("channelTitle", "?"),
+        "channel_id": snippet.get("channelId", "?"),
+        "title": snippet.get("title", "?"),
+        "privacy": status.get("privacyStatus", "?"),
+        "publish_at": status.get("publishAt", "(none)"),
+        "upload_status": status.get("uploadStatus", "?"),
+        "duration": v.get("contentDetails", {}).get("duration", "?"),
+        "processing": v.get("processingDetails", {}).get("processingStatus", "?"),
+    }
+    for key, field_name in (
+        ("failure_reason", "failureReason"),
+        ("rejection_reason", "rejectionReason"),
+    ):
+        if status.get(field_name):
+            out[key] = status[field_name]
+    return out
+
+
 def upload_video(
     video_path: Path,
     *,

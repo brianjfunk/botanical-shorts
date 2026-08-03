@@ -185,7 +185,22 @@ def cmd_check_youtube(args: argparse.Namespace) -> int:
     )
     print("== YouTube credentials")
     for key, value in info.items():
-        print(f"   {key:<11} = {value}")
+        print(f"   {key:<13} = {value}")
+
+    video_id = args.video_id or optional_env("CHECK_VIDEO_ID")
+    if video_id:
+        creds = youtube.build_credentials(
+            require_env("YOUTUBE_CLIENT_ID"),
+            require_env("YOUTUBE_CLIENT_SECRET"),
+            require_env("YOUTUBE_REFRESH_TOKEN"),
+        )
+        print(f"\n== Video {video_id}")
+        try:
+            for key, value in youtube.describe_video(video_id, creds).items():
+                print(f"   {key:<16} = {value}")
+        except Exception as exc:
+            print(f"   lookup failed: {exc}")
+
     print("\n   Refresh token is valid. Nothing was uploaded.")
     return 0
 
@@ -240,6 +255,9 @@ def main(argv: list[str] | None = None) -> int:
     p_verify.set_defaults(func=cmd_verify_bhl)
 
     p_check = sub.add_parser("check-youtube", help="verify YouTube credentials; uploads nothing")
+    p_check.add_argument(
+        "--video-id", help="also report which channel this video landed on and its state"
+    )
     p_check.set_defaults(func=cmd_check_youtube)
 
     p_preview = sub.add_parser("preview", help="render letterbox treatments for sign-off")

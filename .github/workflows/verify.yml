@@ -16,6 +16,11 @@ on:
     paths-ignore:
       - "README.md"
   workflow_dispatch:
+    inputs:
+      video_id:
+        description: "Optional: report which channel this video id landed on"
+        type: string
+        default: ""
 
 concurrency:
   group: verify-${{ github.ref }}
@@ -127,6 +132,7 @@ jobs:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          CHECK_VIDEO_ID: ${{ inputs.video_id }}
         run: python -m botanical_shorts.cli check-youtube
 
       - name: Upload framed plate for visual review
