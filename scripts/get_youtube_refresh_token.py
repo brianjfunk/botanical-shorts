@@ -46,6 +46,64 @@ SCOPES = [
 ]
 
 
+AUTH_URI = "https://accounts.google.com/o/oauth2/auth"
+TOKEN_URI = "https://oauth2.googleapis.com/token"
+
+
+def _flow_from_id_and_secret(client_id: str, client_secret: str) -> InstalledAppFlow:
+    """Build the flow from the two values directly.
+
+    A hand-written client_secret.json is usually missing the ``installed``
+    wrapper and the auth/token URIs that Google's download includes, and the
+    resulting error does not say so. If you have the client id and secret --
+    they are already in your Actions secrets -- this avoids the file entirely.
+    """
+    return InstalledAppFlow.from_client_config(
+        {
+            "installed": {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "auth_uri": AUTH_URI,
+                "token_uri": TOKEN_URI,
+                "redirect_uris": ["http://localhost"],
+            }
+        },
+        SCOPES,
+    )
+
+
+def _flow_from_file(path: str) -> InstalledAppFlow:
+    """Load the downloaded client JSON, diagnosing a malformed file clearly."""
+    import json
+    import os
+
+    if not os.path.exists(path):
+        sys.exit(
+            f"{path} not found.\n"
+            "Download it from Google Cloud Console -> APIs & Services -> "
+            "Credentials -> your Desktop app client -> download icon.\n"
+            "Or skip the file: pass --client-id and --client-secret instead."
+        )
+    try:
+        data = json.load(open(path))
+    except json.JSONDecodeError as exc:
+        sys.exit(f"{path} is not valid JSON: {exc}")
+
+    root = data.get("installed") or data.get("web")
+    if not root:
+        sys.exit(
+            f"{path} has no 'installed' or 'web' key, so it is not an OAuth "
+            "client file -- a hand-written file usually looks like this.\n"
+            "Either download the real one from Google Cloud Console, or pass "
+            "--client-id and --client-secret instead."
+        )
+    missing = [k for k in ("client_id", "client_secret") if not root.get(k)]
+    if missing:
+        sys.exit(f"{path} is missing: {', '.join(missing)}")
+
+    return InstalledAppFlow.from_client_secrets_file(path, SCOPES)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -54,13 +112,27 @@ def main() -> int:
         help="path to the Desktop-app OAuth client JSON downloaded from Google Cloud",
     )
     parser.add_argument(
+        "--client-id",
+        help="OAuth client id; use with --client-secret to skip the JSON file",
+    )
+    parser.add_argument(
+        "--client-secret",
+        help="OAuth client secret; use with --client-id to skip the JSON file",
+    )
+    parser.add_argument(
         "--console",
         action="store_true",
         help="use the console/out-of-band flow instead of a local browser",
     )
     args = parser.parse_args()
 
-    flow = InstalledAppFlow.from_client_secrets_file(args.client_secrets, SCOPES)
+    if bool(args.client_id) != bool(args.client_secret):
+        sys.exit("--client-id and --client-secret must be given together")
+
+    if args.client_id:
+        flow = _flow_from_id_and_secret(args.client_id, args.client_secret)
+    else:
+        flow = _flow_from_file(args.client_secrets)
 
     # access_type=offline + prompt=consent is what actually returns a refresh
     # token; without prompt=consent a re-authorisation returns only an access
