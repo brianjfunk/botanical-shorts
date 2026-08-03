@@ -118,6 +118,17 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python -m botanical_shorts.cli -v run --dry-run
 
+      # Uploads nothing -- just exchanges the refresh token. Catches an OAuth
+      # app left in Testing mode, whose tokens expire after ~7 days and would
+      # otherwise break the daily run silently, a week from now.
+      - name: YouTube credential preflight
+        if: always()
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+        run: python -m botanical_shorts.cli check-youtube
+
       - name: Upload framed plate for visual review
         if: always()
         uses: actions/upload-artifact@v4

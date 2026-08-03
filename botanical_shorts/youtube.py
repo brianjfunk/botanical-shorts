@@ -68,6 +68,40 @@ def scheduled_publish_time(delay_hours: int, *, now: datetime | None = None) -> 
     )
 
 
+def check_credentials(client_id: str, client_secret: str, refresh_token: str) -> dict[str, str]:
+    """Exchange the refresh token for an access token, without uploading.
+
+    This is the preflight that catches the failure mode the spec called out:
+    an OAuth app left in Testing issues refresh tokens that expire after about
+    seven days, so the pipeline works for a week and then starts failing at
+    3am with no one watching. Running this on every verify catches it while
+    it is still a fixable inconvenience.
+    """
+    creds = build_credentials(client_id, client_secret, refresh_token)
+    info: dict[str, str] = {
+        "refresh": "ok",
+        "expiry": creds.expiry.isoformat() if creds.expiry else "unknown",
+        "scopes": ",".join(creds.scopes or []),
+    }
+
+    # Identifying the channel needs a broader scope than youtube.upload, so a
+    # failure here is a scope limitation, not an auth problem. The refresh
+    # above is the signal that matters.
+    try:
+        youtube = build("youtube", "v3", credentials=creds, cache_discovery=False)
+        resp = youtube.channels().list(part="snippet", mine=True).execute()
+        items = resp.get("items") or []
+        if items:
+            info["channel"] = items[0]["snippet"]["title"]
+            info["channel_id"] = items[0]["id"]
+    except HttpError as exc:
+        info["channel"] = f"not readable with this scope ({exc.status_code})"
+    except Exception as exc:  # never fail the preflight on an optional lookup
+        info["channel"] = f"lookup skipped ({type(exc).__name__})"
+
+    return info
+
+
 def upload_video(
     video_path: Path,
     *,

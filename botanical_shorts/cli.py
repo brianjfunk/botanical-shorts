@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from . import bhl, imaging, pipeline
-from .config import ConfigError, load_config, require_env
+from .config import ConfigError, load_config, optional_env, require_env
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -156,6 +156,31 @@ def cmd_verify_bhl(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_check_youtube(args: argparse.Namespace) -> int:
+    """Confirm the stored YouTube credentials still work. Uploads nothing."""
+    from . import youtube
+
+    missing = [
+        name
+        for name in ("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN")
+        if not optional_env(name)
+    ]
+    if missing:
+        print(f"missing secret(s): {', '.join(missing)}", file=sys.stderr)
+        return 1
+
+    info = youtube.check_credentials(
+        require_env("YOUTUBE_CLIENT_ID"),
+        require_env("YOUTUBE_CLIENT_SECRET"),
+        require_env("YOUTUBE_REFRESH_TOKEN"),
+    )
+    print("== YouTube credentials")
+    for key, value in info.items():
+        print(f"   {key:<11} = {value}")
+    print("\n   Refresh token is valid. Nothing was uploaded.")
+    return 0
+
+
 def cmd_preview(args: argparse.Namespace) -> int:
     """Render the same plate under each letterbox treatment, side by side.
 
@@ -200,6 +225,9 @@ def main(argv: list[str] | None = None) -> int:
     p_verify = sub.add_parser("verify-bhl", help="confirm BHL field mapping against the live API")
     p_verify.add_argument("--subject", help="subject to probe (default: first configured)")
     p_verify.set_defaults(func=cmd_verify_bhl)
+
+    p_check = sub.add_parser("check-youtube", help="verify YouTube credentials; uploads nothing")
+    p_check.set_defaults(func=cmd_check_youtube)
 
     p_preview = sub.add_parser("preview", help="render letterbox treatments for sign-off")
     p_preview.add_argument("image", help="path to a source plate image")
