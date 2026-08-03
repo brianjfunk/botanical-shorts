@@ -174,7 +174,8 @@ rather than walking one book plate by plate.
 ## Tests
 
 ```bash
-pip install pytest && python -m pytest tests/ -q
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python -m pytest tests/ -q
 ```
 
 Six tests are skipped unless `BHL_API_KEY` is set and biodiversitylibrary.org
@@ -186,7 +187,7 @@ reconstructed from the failure, not fetched. Worth running once against the
 live API:
 
 ```bash
-BHL_API_KEY=... python -m pytest tests/ -q -k live
+BHL_API_KEY=... .venv/bin/python -m pytest tests/ -q -k live
 ```
 
 Covers the licence gate (including that non-commercial and no-derivatives
