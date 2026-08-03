@@ -211,6 +211,12 @@ class BHLClient:
         records = _as_list(result)
         return records[0] if records else {}
 
+    def get_page_metadata(self, page_id: str, *, ocr: bool = False) -> dict[str, Any]:
+        """Metadata for a single scanned page, including its parent ItemID."""
+        result = self.call("GetPageMetadata", pageid=page_id, ocr="t" if ocr else None)
+        records = _as_list(result)
+        return records[0] if records else {}
+
     def get_item_metadata(self, item_id: str, *, pages: bool = True) -> dict[str, Any]:
         result = self.call("GetItemMetadata", id=item_id, pages="t" if pages else "f")
         records = _as_list(result)

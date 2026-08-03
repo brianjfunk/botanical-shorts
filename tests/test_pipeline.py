@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 from PIL import Image
@@ -577,3 +578,67 @@ def test_restrictive_marker_message_quotes_whichever_field_declared_it(license_c
     )
     assert "'In copyright'" in from_rights.reason
     assert "'CC BY-NC 4.0'" in from_licence.reason
+
+
+# -- regression: the six page IDs from the failing run ------------------------
+#
+# These are the literal pages a real run rejected with
+#   "rights carry a restrictive marker: 'NOT_IN_COPYRIGHT'"
+# Pinning the IDs means a future change to field mapping or licence vocabulary
+# that would re-break these exact plates fails loudly.
+
+REJECTED_PAGE_IDS = ["6095347", "6095427", "6095423", "6095422", "6095417", "6095413"]
+
+# The metadata shape is reconstructed from the reported log line rather than
+# fetched: the message quoted the token, which the old formatting did only when
+# the rights field was empty, placing the token in the licence field. The live
+# test below verifies this against the real API when a key is available.
+REJECTED_SHAPE = {"rights": "", "license_name": "NOT_IN_COPYRIGHT", "license_url": ""}
+
+
+@pytest.mark.parametrize("page_id", REJECTED_PAGE_IDS)
+def test_previously_rejected_pages_now_pass_the_licence_gate(page_id, license_cfg):
+    cand = make_candidate(page_id=page_id, **REJECTED_SHAPE)
+    verdict = licensing.evaluate(cand, license_cfg)
+    assert verdict.allowed, f"page {page_id} rejected: {verdict.reason}"
+    assert "public-domain status" in verdict.reason
+
+
+@pytest.mark.parametrize("page_id", REJECTED_PAGE_IDS)
+def test_previously_rejected_pages_have_usable_image_urls(page_id):
+    cand = make_candidate(page_id=page_id, **REJECTED_SHAPE)
+    assert cand.image_url.endswith(f"/pageimage/{page_id}")
+    assert cand.page_url.endswith(f"/page/{page_id}")
+
+
+@pytest.mark.skipif(
+    not os.environ.get("BHL_API_KEY"),
+    reason="needs BHL_API_KEY and network access to biodiversitylibrary.org",
+)
+@pytest.mark.parametrize("page_id", REJECTED_PAGE_IDS)
+def test_live_rejected_pages_pass_with_real_metadata(page_id, license_cfg):
+    """Resolve each page's real rights metadata and re-run the gate.
+
+    This is the test that would catch a field-mapping regression: it reads
+    whatever BHL actually returns today rather than a reconstructed shape.
+    """
+    client = bhl.BHLClient(os.environ["BHL_API_KEY"])
+
+    page_meta = client.get_page_metadata(page_id)
+    assert page_meta, f"page {page_id} returned no metadata"
+    item_id = str(bhl.pick(page_meta, "item_id") or "")
+    assert item_id, f"page {page_id} metadata carries no ItemID: {sorted(page_meta)}"
+
+    item_meta = client.get_item_metadata(item_id, pages=False)
+    cand = make_candidate(
+        page_id=page_id,
+        item_id=item_id,
+        rights=str(bhl.pick(item_meta, "rights") or ""),
+        license_name=str(bhl.pick(item_meta, "license") or ""),
+        license_url=str(bhl.pick(item_meta, "license_url") or ""),
+    )
+    verdict = licensing.evaluate(cand, license_cfg)
+    assert verdict.allowed, (
+        f"page {page_id} (item {item_id}) still rejected: {verdict.reason} "
+        f"[rights={cand.rights!r} licence={cand.license_name!r} url={cand.license_url!r}]"
+    )

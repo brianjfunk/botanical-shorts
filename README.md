@@ -177,6 +177,18 @@ rather than walking one book plate by plate.
 pip install pytest && python -m pytest tests/ -q
 ```
 
+Six tests are skipped unless `BHL_API_KEY` is set and biodiversitylibrary.org
+is reachable. They resolve the real rights metadata for the six page IDs a live
+run once rejected (`6095347`, `6095427`, `6095423`, `6095422`, `6095417`,
+`6095413`) and re-run the licence gate against it. These are the tests that
+catch a field-mapping regression — the offline ones use a metadata shape
+reconstructed from the failure, not fetched. Worth running once against the
+live API:
+
+```bash
+BHL_API_KEY=... python -m pytest tests/ -q -k live
+```
+
 Covers the licence gate (including that non-commercial and no-derivatives
 plates are refused even when an allowlist entry would otherwise match), the
 BHL field-alias tolerance, paper-tone sampling, framing geometry, the vision
