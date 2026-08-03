@@ -228,6 +228,7 @@ def verdict(**overrides) -> VisionVerdict:
     base = dict(
         scan_quality=9,
         caption_embedded=True,
+        species_name_visible=True,
         is_illustration=True,
         subject_summary="A flowering magnolia branch",
         issues=[],
@@ -263,7 +264,7 @@ def test_missing_caption_rejected_in_hard_gate_mode():
 
 def test_vision_error_fails_closed():
     ok, _ = passes(
-        VisionVerdict(0, False, False, "", [], error="timeout"),
+        VisionVerdict(0, False, False, False, "", [], error="timeout"),
         min_quality=7,
         caption_mode="log_only",
     )
@@ -770,3 +771,67 @@ def test_raw_status_tokens_are_humanised_in_the_description():
 def test_prose_rights_text_is_left_alone():
     cand = make_candidate(rights="Public domain. The BHL considers this work no longer under copyright.")
     assert "The BHL considers" in metadata.build_description(cand, None)
+
+
+# -- title: strip the stock illustration lead-in ------------------------------
+#
+# The first live run titled a plate "Botanical illustration of a lupine plant
+# with purple flowers (1829)" -- accurate, but the lead-in is pure noise on a
+# channel that publishes nothing but botanical illustrations.
+
+@pytest.mark.parametrize(
+    "summary,expected",
+    [
+        ("Botanical illustration of a lupine plant with purple flowers",
+         "Lupine plant with purple flowers"),
+        ("An illustration of Lupinus polyphyllus", "Lupinus polyphyllus"),
+        ("Illustration of the common foxglove", "Common foxglove"),
+        ("A drawing of a fern frond", "Fern frond"),
+        ("Lupinus polyphyllus", "Lupinus polyphyllus"),   # already clean
+        ("Purple-flowered lupine", "Purple-flowered lupine"),
+    ],
+)
+def test_title_strips_stock_lead_ins(summary, expected):
+    title = metadata.build_title(make_candidate(year=""), verdict(subject_summary=summary))
+    assert title == expected
+
+
+def test_binomial_capitalisation_is_preserved():
+    # Never uppercase the epithet of a binomial when tidying.
+    title = metadata.build_title(make_candidate(year=""), verdict(subject_summary="Lupinus polyphyllus"))
+    assert title == "Lupinus polyphyllus"
+
+
+def test_title_still_carries_the_year():
+    title = metadata.build_title(
+        make_candidate(year="1829"),
+        verdict(subject_summary="Botanical illustration of a lupine"),
+    )
+    assert title == "Lupine (1829)"
+
+
+def test_lead_in_only_summary_falls_back_rather_than_emptying():
+    title = metadata.build_title(make_candidate(year=""), verdict(subject_summary="illustration of"))
+    assert title and title != ""
+
+
+# -- species name vs any lettering -------------------------------------------
+#
+# Edwards's Botanical Register plate 1217 carries an engraver's imprint and a
+# plate number but no species name -- caption_embedded is true while the plate
+# does not actually identify the plant. The two signals are recorded separately
+# so a future hard_gate can pick the one that matters.
+
+def test_species_name_is_tracked_separately_from_lettering():
+    v = verdict(caption_embedded=True, species_name_visible=False)
+    assert v.caption_embedded and not v.species_name_visible
+    ok, _ = passes(v, min_quality=7, caption_mode="log_only")
+    assert ok, "an imprint-only plate must still pass in log_only mode"
+
+
+def test_species_name_absence_never_gates_even_in_hard_gate_mode():
+    # hard_gate is about lettering on the plate, not about naming -- many fine
+    # plates put the name on a facing page.
+    v = verdict(caption_embedded=True, species_name_visible=False)
+    ok, _ = passes(v, min_quality=7, caption_mode="hard_gate")
+    assert ok

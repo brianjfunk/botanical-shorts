@@ -54,25 +54,38 @@ furniture in frame, or an illustration cut off at the edge of the scan. Do NOT \
 lower it for the paper simply being aged, toned or yellowed -- that is expected \
 and desirable. A clean, complete, sharp plate on toned paper scores 9-10.
 
-2. caption_embedded (boolean): whether printed or hand-lettered text -- a species \
-name, plate number, or engraver's line -- appears ON the plate itself as part of \
-the original engraving or lithograph. Letterpress body text on a facing or \
-separate page does not count; it must be part of the plate.
+2. caption_embedded (boolean): whether ANY printed or hand-lettered text appears ON \
+the plate itself as part of the original engraving or lithograph -- including a \
+plate number or an artist/publisher/engraver imprint line. Letterpress body text \
+on a facing or separate page does not count; it must be part of the plate.
 
 Also report:
+- species_name_visible (boolean): whether the plate itself carries the NAME OF THE \
+PLANT OR ORGANISM depicted -- a botanical binomial or a common name. This is \
+narrower than caption_embedded: a plate number ("1217") or an imprint line \
+("Pub. by J. Ridgway") is lettering but is NOT a name. Answer false when the only \
+lettering is a number, an imprint, or an engraver credit.
 - is_illustration (boolean): is this page primarily a pictorial plate, rather \
 than a page of body text, a title page, an index, or a blank?
-- subject_summary (string, max 12 words): what the plate depicts.
+- subject_summary (string, max 8 words): the subject itself as a short noun \
+phrase. Name it directly -- do NOT begin with "Botanical illustration of", "An \
+illustration of", "A drawing of" or similar. If a name is legible on the plate, \
+prefer it. Good: "Lupinus polyphyllus". "Purple-flowered lupine". Bad: "Botanical \
+illustration of a lupine plant with purple flowers".
 - issues (array of short strings): specific defects you observed, empty if none.
 
 Respond with ONLY a JSON object with keys: scan_quality, caption_embedded, \
-is_illustration, subject_summary, issues."""
+species_name_visible, is_illustration, subject_summary, issues."""
 
 
 @dataclass
 class VisionVerdict:
     scan_quality: int
     caption_embedded: bool
+    # Narrower than caption_embedded: the plate names the organism, rather than
+    # merely carrying a plate number or an engraver's imprint. Recorded only --
+    # never gated on, since many fine plates put the name on a facing page.
+    species_name_visible: bool
     is_illustration: bool
     subject_summary: str
     issues: list[str]
@@ -150,6 +163,7 @@ def inspect_plate(client, img: Image.Image, *, model: str) -> VisionVerdict:
         return VisionVerdict(
             scan_quality=0,
             caption_embedded=False,
+            species_name_visible=False,
             is_illustration=False,
             subject_summary="",
             issues=[],
@@ -159,6 +173,7 @@ def inspect_plate(client, img: Image.Image, *, model: str) -> VisionVerdict:
     return VisionVerdict(
         scan_quality=int(data.get("scan_quality") or 0),
         caption_embedded=bool(data.get("caption_embedded")),
+        species_name_visible=bool(data.get("species_name_visible")),
         is_illustration=bool(data.get("is_illustration")),
         subject_summary=str(data.get("subject_summary") or "").strip(),
         issues=[str(i) for i in (data.get("issues") or [])],

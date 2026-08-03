@@ -24,6 +24,54 @@ RIGHTS_LABELS = {
 }
 
 
+# "Botanical illustration of a lupine" says nothing on a channel that is
+# nothing but botanical illustrations. The vision prompt asks for a bare noun
+# phrase; this strips the stock lead-in when the model supplies one anyway.
+LEAD_INS = (
+    "botanical illustration of",
+    "natural history illustration of",
+    "scientific illustration of",
+    "an illustration of",
+    "a illustration of",
+    "illustration of",
+    "a drawing of",
+    "drawing of",
+    "a painting of",
+    "painting of",
+    "an engraving of",
+    "engraving of",
+    "a plate depicting",
+    "plate depicting",
+    "depicts",
+)
+
+ARTICLES = ("a ", "an ", "the ")
+
+
+def _strip_lead_in(text: str) -> str:
+    """Remove a stock 'illustration of ...' preamble from a subject phrase."""
+    cleaned = text.strip()
+    changed = True
+    while changed:
+        changed = False
+        lowered = cleaned.lower()
+        for lead in LEAD_INS:
+            if lowered.startswith(lead):
+                cleaned = cleaned[len(lead) :].strip()
+                changed = True
+                break
+        lowered = cleaned.lower()
+        for article in ARTICLES:
+            if lowered.startswith(article):
+                cleaned = cleaned[len(article) :].strip()
+                changed = True
+                break
+    if not cleaned:
+        return text
+    # Only capitalise a lowercase opener -- never touch a binomial's casing.
+    return cleaned[0].upper() + cleaned[1:] if cleaned[:1].islower() else cleaned
+
+
 def humanize_rights(value: str) -> str:
     """Render a rights value for a viewer rather than a gate."""
     text = str(value or "").strip()
@@ -38,7 +86,7 @@ def build_title(candidate: PageCandidate, verdict: VisionVerdict | None) -> str:
     """
     # The year alone is not a title, so pick the subject line first and only
     # then decorate it -- otherwise a missing vision summary yields "(1805)".
-    stem = (verdict.subject_summary if verdict else "").strip().rstrip(".")
+    stem = _strip_lead_in((verdict.subject_summary if verdict else "").strip().rstrip("."))
     if not stem:
         stem = candidate.title.strip()
     if not stem:
