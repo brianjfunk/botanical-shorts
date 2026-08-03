@@ -354,3 +354,125 @@ def test_portrait_plate_fills_most_of_the_frame():
     )
     coverage = (framed.plate_size[0] * framed.plate_size[1]) / (1080 * 1920)
     assert coverage > 0.55, f"plate covers only {coverage:.0%} of frame"
+
+
+# -- subject discovery -------------------------------------------------------
+
+class StubClient(bhl.BHLClient):
+    """A BHLClient whose HTTP layer is replaced by canned responses."""
+
+    def __init__(self, responses):
+        self.responses = responses
+        self.calls = []
+
+    def call(self, op, **params):
+        self.calls.append((op, params))
+        return self.responses.get(op)
+
+
+def test_subject_discovery_uses_getsubjectmetadata_not_publicationsearch():
+    # PublicationSearchAdvanced rejects a bare subject, so discovery must not
+    # reach for it.
+    client = StubClient(
+        {"GetSubjectMetadata": [{"SubjectText": "Botany", "Publications": [
+            {"BHLType": "Title", "TitleID": "1", "Title": "Flora"},
+        ]}]}
+    )
+    client.subject_titles("Botany")
+    ops = [op for op, _ in client.calls]
+    assert ops == ["GetSubjectMetadata"]
+    assert client.calls[0][1]["subject"] == "Botany"
+    assert client.calls[0][1]["pubs"] == "t"
+
+
+def test_subject_titles_drops_parts_and_keeps_titles():
+    client = StubClient(
+        {"GetSubjectMetadata": [{"Publications": [
+            {"BHLType": "Title", "TitleID": "1", "Title": "Flora Londinensis"},
+            {"BHLType": "Part", "PartID": "99", "Title": "An article"},
+            {"BHLType": "Title", "TitleID": "2", "Title": "Botanical Magazine"},
+        ]}]}
+    )
+    titles = client.subject_titles("Botany")
+    assert [bhl.pick(t, "title_id") for t in titles] == ["1", "2"]
+
+
+def test_subject_titles_keeps_untyped_records_carrying_a_title_id():
+    # Tolerate a response that omits BHLType but is clearly title-level.
+    client = StubClient(
+        {"GetSubjectMetadata": [{"Publications": [
+            {"TitleID": "5", "Title": "Untyped but title-level"},
+            {"PartID": "6", "Title": "Untyped and not"},
+        ]}]}
+    )
+    assert [bhl.pick(t, "title_id") for t in client.subject_titles("Botany")] == ["5"]
+
+
+def test_subject_titles_empty_when_subject_missing():
+    assert StubClient({"GetSubjectMetadata": []}).subject_titles("Nope") == []
+
+
+def test_iter_candidates_walks_subject_to_page():
+    client = StubClient({
+        "GetSubjectMetadata": [{"Publications": [
+            {"BHLType": "Part", "PartID": "99"},
+            {"BHLType": "Title", "TitleID": "10"},
+        ]}],
+        "GetTitleMetadata": [{
+            "TitleID": "10",
+            "FullTitle": "Curtis's Botanical Magazine",
+            "PublicationDate": "1805",
+            "Authors": [{"Name": "Curtis, William"}],
+            "Items": [{"ItemID": "20"}],
+        }],
+        "GetItemMetadata": [{
+            "ItemID": "20",
+            "RightsStatus": "Public domain",
+            "Source": "Missouri Botanical Garden",
+            "Pages": [
+                {"PageID": "300", "PageTypes": ["Text"]},
+                {"PageID": "301", "PageTypes": ["Illustration"]},
+            ],
+        }],
+    })
+
+    got = list(bhl.iter_candidates(
+        client,
+        subjects=["Botanical illustration"],
+        page_types=["Illustration"],
+        year_min=1700,
+        year_max=1920,
+        titles_per_subject=5,
+        max_items_per_title=5,
+        max_pages_per_item=5,
+        limit=10,
+    ))
+
+    assert len(got) == 1, "only the Illustration page should survive"
+    cand = got[0]
+    assert cand.page_id == "301"
+    assert cand.item_id == "20"
+    assert cand.title == "Curtis's Botanical Magazine"
+    assert cand.year == "1805"
+    assert cand.authors == ["Curtis, William"]
+    assert cand.rights == "Public domain"
+    assert "GetSubjectMetadata" in [op for op, _ in client.calls]
+
+
+def test_iter_candidates_skips_titles_outside_the_year_window():
+    client = StubClient({
+        "GetSubjectMetadata": [{"Publications": [{"BHLType": "Title", "TitleID": "10"}]}],
+        "GetTitleMetadata": [{"TitleID": "10", "PublicationDate": "1975"}],
+    })
+    got = list(bhl.iter_candidates(
+        client,
+        subjects=["Botany"],
+        page_types=["Illustration"],
+        year_min=1700,
+        year_max=1920,
+        titles_per_subject=5,
+        max_items_per_title=5,
+        max_pages_per_item=5,
+        limit=10,
+    ))
+    assert got == []

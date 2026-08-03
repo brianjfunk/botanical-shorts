@@ -50,6 +50,10 @@ FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "source": ("Source", "SourceIdentifier", "Contributor"),
     "items": ("Items",),
     "pages": ("Pages",),
+    "publications": ("Publications",),
+    # GetSubjectMetadata mixes whole works ("Title") with articles inside them
+    # ("Part"); only the former can be traversed down to item pages.
+    "bhl_type": ("BHLType", "Type"),
 }
 
 
@@ -170,11 +174,37 @@ class BHLClient:
 
     # -- API methods -----------------------------------------------------
 
-    def publication_search_advanced(
-        self, *, subject: str, page: int = 1, **extra: Any
-    ) -> list[dict[str, Any]]:
-        result = self.call("PublicationSearchAdvanced", subject=subject, page=page, **extra)
-        return _as_list(result)
+    def get_subject_metadata(self, subject: str, *, pubs: bool = True) -> dict[str, Any]:
+        """Metadata for one subject heading, optionally with its publications.
+
+        This is the subject-based discovery entry point.
+        ``PublicationSearchAdvanced`` cannot be used for it: that method
+        requires a title, author or collection id, and rejects a subject on
+        its own.
+        """
+        result = self.call("GetSubjectMetadata", subject=subject, pubs="t" if pubs else None)
+        records = _as_list(result)
+        return records[0] if records else {}
+
+    def subject_titles(self, subject: str) -> list[dict[str, Any]]:
+        """Title-level publications tagged with ``subject``.
+
+        Parts (articles within a work) are dropped -- they carry no TitleID and
+        cannot be walked down to item pages.
+        """
+        meta = self.get_subject_metadata(subject, pubs=True)
+        publications = _as_list(pick(meta, "publications", []))
+        titles = []
+        for pub in publications:
+            bhl_type = str(pick(pub, "bhl_type") or "").strip().lower()
+            # Keep records that say "Title", and those that declare no type at
+            # all but do carry a TitleID.
+            if bhl_type == "part":
+                continue
+            if bhl_type != "title" and not pick(pub, "title_id"):
+                continue
+            titles.append(pub)
+        return titles
 
     def get_title_metadata(self, title_id: str, *, items: bool = True) -> dict[str, Any]:
         result = self.call("GetTitleMetadata", id=title_id, items="t" if items else "f")
@@ -258,9 +288,12 @@ def iter_candidates(
 
     for subject in subjects:
         try:
-            titles = client.publication_search_advanced(subject=subject)
+            titles = client.subject_titles(subject)
         except BHLError as exc:
-            log.warning("subject %r search failed: %s", subject, exc)
+            log.warning("subject %r lookup failed: %s", subject, exc)
+            continue
+        if not titles:
+            log.warning("subject %r returned no title-level publications", subject)
             continue
 
         for title_rec in titles[:titles_per_subject]:

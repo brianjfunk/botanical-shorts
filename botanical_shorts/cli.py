@@ -49,13 +49,24 @@ def cmd_verify_bhl(args: argparse.Namespace) -> int:
     client = bhl.BHLClient(require_env("BHL_API_KEY"))
     subject = args.subject or cfg.source.subjects[0]
 
-    print(f"== PublicationSearchAdvanced(subject={subject!r})")
-    titles = client.publication_search_advanced(subject=subject)
-    print(f"   {len(titles)} titles returned")
-    if not titles:
-        print("   no titles; try a different subject", file=sys.stderr)
+    print(f"== GetSubjectMetadata(subject={subject!r}, pubs=t)")
+    subject_meta = client.get_subject_metadata(subject, pubs=True)
+    if not subject_meta:
+        print(f"   subject {subject!r} not found in BHL", file=sys.stderr)
         return 1
-    print("   first record keys:", sorted(titles[0].keys()))
+    print("   keys:", sorted(subject_meta.keys()))
+    publications = bhl._as_list(bhl.pick(subject_meta, "publications", []))
+    print(f"   {len(publications)} publications")
+    if publications:
+        print("   publication record keys:", sorted(publications[0].keys()))
+        types = {str(bhl.pick(p, "bhl_type") or "?") for p in publications}
+        print("   BHLType values present:", sorted(types))
+
+    titles = client.subject_titles(subject)
+    print(f"   {len(titles)} title-level (Parts dropped)")
+    if not titles:
+        print("   no title-level publications; try a different subject", file=sys.stderr)
+        return 1
 
     title_id = str(bhl.pick(titles[0], "title_id") or "")
     print(f"\n== GetTitleMetadata(id={title_id})")

@@ -24,7 +24,7 @@ engraved caption at the frame edge.
 ## Pipeline
 
 ```
-BHL subject search
+BHL GetSubjectMetadata(pubs=t) → title-level publications per subject
   └─ title → item → page traversal, keeping pages BHL flags as illustrations
       └─ history dedupe        (never repeat a plate, or a volume)
         └─ licence gate        (per-item rights, allowlist, fails closed)
@@ -111,6 +111,12 @@ It reports which logical fields resolved, which page types your subjects
 actually return, and exits non-zero listing anything unresolved — add the real
 key names to `FIELD_ALIASES` if so. **Do this before the first real run**; it's
 the one place where a wrong guess would quietly degrade selection.
+
+Subject discovery goes through `GetSubjectMetadata(subject=…, pubs=t)`.
+`PublicationSearchAdvanced` is not usable here: it requires a title, author or
+collection id and rejects a subject on its own. The publications it returns mix
+`BHLType: Title` with `BHLType: Part` — Parts are articles inside a work and
+carry no `TitleID`, so they're dropped before the item traversal.
 
 ## Usage
 
