@@ -655,3 +655,60 @@ def test_live_rejected_pages_pass_with_real_metadata(page_id, license_cfg):
         f"page {page_id} (item {item_id}) still rejected: {verdict.reason} "
         f"[rights={cand.rights!r} licence={cand.license_name!r} url={cand.license_url!r}]"
     )
+
+
+# -- regression: BHL page-type whitespace ------------------------------------
+#
+# verify-bhl against the live API reported page types as:
+#   [' Text', ' Title Page', 'Blank', 'Cover', 'Illustration', 'Index', 'Text']
+# Note the leading spaces, and that ' Text' and 'Text' both occur in one item.
+# Unstripped, a ' Illustration' variant would silently fail to match and the
+# plate would never be considered.
+
+def test_page_types_strip_leading_whitespace():
+    assert bhl._page_types({"PageTypes": [" Text", "Illustration"]}) == ["Text", "Illustration"]
+    assert bhl._page_types({"PageTypes": [{"PageTypeName": " Illustration"}]}) == ["Illustration"]
+    assert bhl._page_types({"PageTypes": ["  ", ""]}) == []
+
+
+@pytest.mark.parametrize("variant", ["Illustration", " Illustration", "Illustration ", "illustration"])
+def test_whitespace_variants_of_illustration_still_match(variant):
+    client = StubClient({
+        "GetSubjectMetadata": [{"Publications": [{"BHLType": "Title", "TitleID": "10"}]}],
+        "GetTitleMetadata": [{
+            "TitleID": "10", "FullTitle": "Hesperides", "PublicationDate": "1646",
+            "Items": [{"ItemID": "8848"}],
+        }],
+        "GetItemMetadata": [{
+            "ItemID": "8848",
+            "CopyrightStatus": "Public domain.  The BHL considers that this work is no longer under copyright.",
+            "Source": "Internet Archive",
+            "Pages": [{"PageID": "273051", "PageTypes": [variant]}],
+        }],
+    })
+    # The real title is 1646, outside the shipped window, so widen it here --
+    # this test is about page-type matching, not the year gate.
+    got = list(bhl.iter_candidates(
+        client, subjects=["Botanical illustration"], page_types=["Illustration", "Foldout"],
+        year_min=1600, year_max=1920, titles_per_subject=5, max_items_per_title=5,
+        max_pages_per_item=5, limit=10,
+    ))
+    assert len(got) == 1, f"{variant!r} failed to match"
+    assert got[0].page_id == "273051"
+
+
+def test_live_shaped_item_uses_copyrightstatus_for_rights(license_cfg):
+    # GetItemMetadata carries CopyrightStatus and no License field at all.
+    item = {
+        "ItemID": "8848",
+        "CopyrightStatus": "Public domain.  The BHL considers that this work is no longer under copyright.",
+        "Source": "Internet Archive",
+    }
+    assert bhl.pick(item, "rights"), "CopyrightStatus must resolve as rights"
+    assert bhl.pick(item, "license") is None
+    cand = make_candidate(
+        rights=str(bhl.pick(item, "rights")),
+        license_name=str(bhl.pick(item, "license") or ""),
+        license_url="",
+    )
+    assert licensing.evaluate(cand, license_cfg).allowed

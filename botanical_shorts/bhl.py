@@ -242,10 +242,17 @@ def _page_types(page: dict[str, Any]) -> list[str]:
         if isinstance(entry, dict):
             # Some BHL responses nest as [{"PageTypeName": "Illustration"}].
             value = entry.get("PageTypeName") or entry.get("Name") or entry.get("Type")
-            if value:
-                out.append(str(value))
-        elif entry:
-            out.append(str(entry))
+        else:
+            value = entry
+        if not value:
+            continue
+        # BHL's page-type strings carry inconsistent leading whitespace -- a
+        # single item can return both "Text" and " Text". Unstripped, a
+        # " Illustration" variant would silently fail to match and the plate
+        # would be skipped.
+        text = str(value).strip()
+        if text:
+            out.append(text)
     return out
 
 
@@ -289,7 +296,7 @@ def iter_candidates(
     Yields lazily so callers can stop as soon as they have a usable plate,
     rather than paying for the whole traversal every run.
     """
-    wanted_types = {t.lower() for t in page_types}
+    wanted_types = {t.strip().lower() for t in page_types}
     emitted = 0
 
     for subject in subjects:

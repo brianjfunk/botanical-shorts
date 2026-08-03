@@ -96,38 +96,63 @@ def cmd_verify_bhl(args: argparse.Namespace) -> int:
         print("   -> overlap:", sorted(overlap) or "NONE (adjust source.page_types)")
 
     print("\n== Field mapping resolution")
+    # (label, record, logical, required). The licence fields are genuinely
+    # optional: BHL omits them entirely for public-domain items, which declare
+    # status in CopyrightStatus instead. Flagging their absence as a failure
+    # would send you chasing alias names that do not exist.
     checks = [
-        ("title_id", titles[0], "title_id"),
-        ("full_title", title_meta, "full_title"),
-        ("year", title_meta, "year"),
-        ("publisher", title_meta, "publisher"),
-        ("authors", title_meta, "authors"),
-        ("item_id", items[0], "item_id"),
-        ("rights", item_meta, "rights"),
-        ("license", item_meta, "license"),
-        ("license_url", item_meta, "license_url"),
-        ("source", item_meta, "source"),
+        ("title_id", titles[0], "title_id", True),
+        ("full_title", title_meta, "full_title", True),
+        ("year", title_meta, "year", True),
+        ("publisher", title_meta, "publisher", False),
+        ("authors", title_meta, "authors", False),
+        ("item_id", items[0], "item_id", True),
+        ("rights", item_meta, "rights", True),
+        ("license", item_meta, "license", False),
+        ("license_url", item_meta, "license_url", False),
+        ("source", item_meta, "source", False),
     ]
     if pages:
-        checks += [("page_id", pages[0], "page_id"), ("page_types", pages[0], "page_types")]
+        checks += [
+            ("page_id", pages[0], "page_id", True),
+            ("page_types", pages[0], "page_types", True),
+        ]
 
-    missing = []
-    for label, record, logical in checks:
+    missing_required: list[str] = []
+    absent_optional: list[str] = []
+    for label, record, logical, required in checks:
         value = bhl.pick(record, logical)
-        status = "ok " if value not in (None, "", [], {}) else "MISS"
-        if status == "MISS":
-            missing.append(label)
-        preview = str(value)[:70]
-        print(f"   [{status}] {label:<14} = {preview}")
+        present = value not in (None, "", [], {})
+        if present:
+            status = "ok "
+        elif required:
+            status = "MISS"
+            missing_required.append(label)
+        else:
+            status = " - "
+            absent_optional.append(label)
+        # Show page types normalised, since that is the form the pipeline
+        # actually matches against.
+        if logical == "page_types" and present:
+            value = bhl._page_types(record)
+        print(f"   [{status}] {label:<14} = {str(value)[:70]}")
 
-    if missing:
+    if absent_optional:
         print(
-            f"\n   {len(missing)} field(s) unresolved: {', '.join(missing)}."
+            f"\n   Not present (optional): {', '.join(absent_optional)}."
+            "\n   license/license_url are expected to be absent for public-domain"
+            "\n   items -- BHL only populates them for CC-licensed material."
+        )
+
+    if missing_required:
+        print(
+            f"\n   {len(missing_required)} required field(s) unresolved: "
+            f"{', '.join(missing_required)}."
             "\n   Add the real key names to FIELD_ALIASES in botanical_shorts/bhl.py.",
             file=sys.stderr,
         )
         return 1
-    print("\n   All logical fields resolved.")
+    print("\n   All required fields resolved.")
     return 0
 
 
