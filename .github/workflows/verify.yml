@@ -1,0 +1,80 @@
+name: Verify BHL integration
+
+# Exists so verification does not require anyone's laptop. Actions runners have
+# unrestricted network access to biodiversitylibrary.org, which the development
+# sandbox does not, so this is where the live checks actually run -- and their
+# logs are readable without pasting terminal output around.
+#
+# Triggers on push to development branches so a change is verified as soon as
+# it lands, and by hand from the Actions tab.
+
+on:
+  push:
+    branches:
+      - "claude/**"
+      - "verify/**"
+    paths-ignore:
+      - "README.md"
+  workflow_dispatch:
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Check BHL_API_KEY is configured
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+        run: |
+          if [ -z "$BHL_API_KEY" ]; then
+            echo "::error::BHL_API_KEY repository secret is not set."
+            echo "Add it under Settings -> Secrets and variables -> Actions."
+            echo "Without it the live checks cannot run."
+            exit 1
+          fi
+          echo "BHL_API_KEY is present (${#BHL_API_KEY} chars)."
+
+      - name: Offline test suite
+        run: python -m pytest tests/ -q
+
+      - name: Live tests against the real BHL API
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+        run: python -m pytest tests/ -v -k live
+
+      - name: verify-bhl field mapping
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+        run: python -m botanical_shorts.cli verify-bhl
+
+      - name: Dry run -- select, gate and frame a real plate
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python -m botanical_shorts.cli -v run --dry-run
+
+      - name: Upload framed plate for visual review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-output
+          path: |
+            build/*.png
+            build/summary.json
+          if-no-files-found: ignore
+          retention-days: 14
