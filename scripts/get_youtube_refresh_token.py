@@ -17,6 +17,11 @@ Before running, in the Google Cloud console:
    through an "unverified app" warning once, here.
 4. Create an OAuth 2.0 Client ID of type **Desktop app** and download its JSON.
 
+If your Google account has more than one channel (a personal channel plus any
+brand accounts), the consent screen shows a channel picker. **Pick the channel
+you actually want to publish to** -- the refresh token is bound to that choice,
+and an upload to the wrong channel still returns a perfectly valid video id.
+
 You do not need to add yourself as a test user; as project owner you already
 have access, and the console rejects the attempt as ineligible.
 """
@@ -31,7 +36,14 @@ try:
 except ImportError:  # pragma: no cover
     sys.exit("pip install google-auth-oauthlib first")
 
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+# youtube.upload alone is write-only: it can publish but cannot read back which
+# channel it published to. Adding youtube.readonly lets the preflight name the
+# channel before a batch runs -- the difference between catching a wrong-channel
+# upload now and discovering it after 30 videos.
+SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.readonly",
+]
 
 
 def main() -> int:
