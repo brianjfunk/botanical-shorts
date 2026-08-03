@@ -1,0 +1,110 @@
+# Botanical Shorts pipeline settings.
+# Secrets are never stored here -- see README for the environment variables.
+
+source:
+  # v1 is botanical-only, per the scope decision. Widening to the broader
+  # natural-history pool is adding subjects to this list -- nothing else
+  # in the pipeline is scope-aware.
+  #
+  # To widen, append e.g.:
+  #   - "Zoological illustration"
+  #   - "Entomology"
+  #   - "Birds"
+  subjects:
+    - "Botanical illustration"
+    - "Botany, Pictorial works"
+    - "Plants Pictorial works"
+
+  # BHL flags page types per scanned page. "Illustration" is the plate marker;
+  # run `verify-bhl` to confirm the exact strings your queries return.
+  page_types:
+    - "Illustration"
+    - "Foldout"
+
+  # The plate-embedded lettering era. Captions engraved onto the plate itself
+  # are near-universal in this window and become less reliable outside it.
+  year_min: 1700
+  year_max: 1920
+
+  titles_per_subject: 12
+  max_items_per_title: 3
+  # Cap per volume so one heavily-illustrated book cannot dominate the pool.
+  max_pages_per_item: 6
+  max_candidates: 80
+
+license:
+  # Allowlist, matched case-insensitively as substrings against BHL's
+  # per-item rights and licence fields. Anything unmatched is rejected.
+  allowed_rights:
+    - "public domain"
+    - "no known copyright"
+    - "not in copyright"
+    - "cc0"
+  allowed_licenses:
+    - "cc0"
+    - "public domain"
+    - "publicdomain"
+    - "cc by"
+    - "creative commons attribution"
+  # Fail closed when BHL reports nothing at all.
+  allow_unknown: false
+
+vision:
+  enabled: true
+  model: "claude-sonnet-5"
+  # v1: record the caption verdict, do not reject on it. Flip to "hard_gate"
+  # once the logged verdicts look trustworthy against real output.
+  caption_mode: "log_only"
+  # Scan quality IS enforced from day one.
+  min_scan_quality: 7
+  # Bounds spend if the pool is full of poor scans on a given day.
+  max_vision_calls: 12
+
+image:
+  width: 1080
+  height: 1920
+  # Breathing room around the plate, as a fraction of each edge.
+  margin_ratio: 0.06
+  # Signed off: fill margins with the plate's own sampled paper tone.
+  letterbox: "sampled_paper"
+  # Used when letterbox is "fixed", and as the fallback when a scan's border
+  # samples as scanner void rather than paper.
+  fixed_fill_color: "#E8DEC9"
+  # Subtle translucent keyline around the plate edge; 0 disables.
+  border_px: 2
+  border_color: "#00000026"
+  min_source_width: 700
+  min_source_height: 900
+  # Skip strongly-landscape plates: fitted into 9:16 without cropping they
+  # occupy a thin band mid-frame, and cropping to fill would risk clipping the
+  # plate's engraved caption. Most bound plates are portrait.
+  max_source_aspect: 1.25
+
+video:
+  # Short by design: on a truly static frame the loop point is invisible, so a
+  # brief clip maximises loop count within a viewer's dwell time.
+  duration_seconds: 2.0
+  fps: 30
+  crf: 18
+
+upload:
+  enabled: true
+  privacy_status: "private"
+  # The passive veto window -- auto-publishes unless pulled in Studio.
+  publish_delay_hours: 24
+  # 22 = People & Blogs. 27 = Education.
+  category_id: "27"
+  tags:
+    - "botanical illustration"
+    - "natural history"
+    - "public domain"
+    - "vintage botanical"
+    - "biodiversity heritage library"
+  made_for_kids: false
+
+notify:
+  enabled: true
+  channel_hint: "set SLACK_WEBHOOK_URL to receive the daily review ping"
+
+history_path: "state/history.json"
+output_dir: "build"

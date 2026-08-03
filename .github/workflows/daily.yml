@@ -1,0 +1,90 @@
+name: Daily plate
+
+on:
+  schedule:
+    # 13:10 UTC daily. Off the hour, since scheduled runs bunch up on the hour.
+    - cron: "10 13 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Select and frame only -- no render, no upload"
+        type: boolean
+        default: false
+      skip_upload:
+        description: "Render but do not upload"
+        type: boolean
+        default: false
+
+concurrency:
+  group: daily-plate
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pipeline
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          python -m botanical_shorts.cli run \
+            ${{ inputs.dry_run && '--dry-run' || '' }} \
+            ${{ inputs.skip_upload && '--skip-upload' || '' }}
+
+      - name: Upload artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plate-${{ github.run_number }}
+          path: |
+            build/*.png
+            build/*.mp4
+            build/summary.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Commit history
+        if: success() && !inputs.dry_run && !inputs.skip_upload
+        run: |
+          if git diff --quiet -- state/history.json; then
+            echo "history unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/history.json
+          git commit -m "Record published plate ($(date -u +%Y-%m-%d))"
+          # The runner is ephemeral, so this commit is the only durable record
+          # of what has been published. Rebase in case a concurrent run landed.
+          for attempt in 1 2 3; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
+              git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $((attempt * 4))
+          done
+          echo "::error::could not push history update"
+          exit 1
