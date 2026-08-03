@@ -20,6 +20,14 @@ reject essentially every genuine PD item.
 wording in the rights text alone is *not* accepted, because it does not say
 which licence applies -- without that, an NC or ND obligation could pass
 unnoticed. Absent licence fields fail closed.
+
+The asymmetry that follows: a **public-domain status** is a status, not a
+licence, and BHL declares it in whichever field its upstream source used.
+Internet-Archive-sourced records in particular put a bare token
+(``NOT_IN_COPYRIGHT``) in the licence field while leaving the rights text
+empty. So the PD vocabulary is matched against every rights and licence field,
+whereas the CC vocabulary is matched only against the licence fields. Matching
+PD against the rights field alone silently rejects every IA-sourced item.
 """
 
 from __future__ import annotations
@@ -90,14 +98,19 @@ def evaluate(candidate: PageCandidate, cfg: LicenseConfig) -> LicenseVerdict:
         return LicenseVerdict(False, "BHL reported no rights or licence metadata")
 
     if _has_blocked_marker(haystack):
-        return LicenseVerdict(
-            False, f"rights carry a restrictive marker: {candidate.rights or candidate.license_name!r}"
-        )
+        declared = candidate.rights or candidate.license_name or candidate.license_url
+        return LicenseVerdict(False, f"rights carry a restrictive marker: {declared!r}")
 
+    # Public-domain status: accepted from any field, because BHL mirrors
+    # whichever field its upstream source populated.
     for allowed in cfg.allowed_rights:
-        if _norm(allowed) and _norm(allowed) in rights:
-            return LicenseVerdict(True, f"rights status {candidate.rights!r}", matched=allowed)
+        needle = _norm(allowed)
+        if needle and needle in haystack:
+            declared = candidate.rights or candidate.license_name or candidate.license_url
+            return LicenseVerdict(True, f"public-domain status {declared!r}", matched=allowed)
 
+    # CC licence identity: licence fields only. Rights prose naming Creative
+    # Commons without naming the licence is not enough to rule out NC/ND.
     for allowed in cfg.allowed_licenses:
         needle = _norm(allowed)
         if needle and (needle in license_name or needle in license_url):

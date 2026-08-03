@@ -529,3 +529,51 @@ def test_restrictive_cc_licences_rejected_from_url_alone(license_cfg):
         license_url="https://creativecommons.org/licenses/by-nc-sa/4.0/",
     )
     assert not licensing.evaluate(cand, license_cfg).allowed
+
+
+# -- regression: IA-sourced PD status tokens ---------------------------------
+#
+# A real run rejected six pages with:
+#   "rights carry a restrictive marker: 'NOT_IN_COPYRIGHT'"
+# The quoting in that message only occurs when the rights field is empty, so
+# the token arrived via the LICENCE field, not rights/CopyrightStatus --
+# Internet-Archive-sourced records carry a bare status token there. A
+# public-domain status is a status, not a licence, so it must be honoured from
+# whichever field the upstream source populated.
+
+IA_PD_TOKENS = ["NOT_IN_COPYRIGHT", "PUBLIC_DOMAIN", "NOT_IN_COPYRIGHT_USA"]
+
+
+@pytest.mark.parametrize("token", IA_PD_TOKENS)
+@pytest.mark.parametrize("field", ["rights", "license_name", "license_url"])
+def test_ia_public_domain_token_accepted_from_any_field(token, field, license_cfg):
+    cand = make_candidate(**{"rights": "", "license_name": "", "license_url": "", field: token})
+    verdict = licensing.evaluate(cand, license_cfg)
+    assert verdict.allowed, f"{token!r} in {field} rejected: {verdict.reason}"
+
+
+def test_ia_token_in_licence_field_is_not_mistaken_for_a_cc_licence(license_cfg):
+    # It must pass as a public-domain *status*, not by matching CC vocabulary.
+    cand = make_candidate(rights="", license_name="NOT_IN_COPYRIGHT", license_url="")
+    verdict = licensing.evaluate(cand, license_cfg)
+    assert verdict.allowed
+    assert "public-domain status" in verdict.reason
+
+
+@pytest.mark.parametrize("field", ["rights", "license_name", "license_url"])
+def test_in_copyright_token_still_rejected_from_any_field(field, license_cfg):
+    cand = make_candidate(
+        **{"rights": "", "license_name": "", "license_url": "", field: "IN_COPYRIGHT"}
+    )
+    assert not licensing.evaluate(cand, license_cfg).allowed
+
+
+def test_restrictive_marker_message_quotes_whichever_field_declared_it(license_cfg):
+    # The old message bound !r to only one operand, so it quoted the value in
+    # some cases and not others -- which made the source field ambiguous.
+    from_rights = licensing.evaluate(make_candidate(rights="In copyright"), license_cfg)
+    from_licence = licensing.evaluate(
+        make_candidate(rights="", license_name="CC BY-NC 4.0"), license_cfg
+    )
+    assert "'In copyright'" in from_rights.reason
+    assert "'CC BY-NC 4.0'" in from_licence.reason

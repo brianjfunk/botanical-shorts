@@ -65,6 +65,11 @@ the gate reads two tracks:
   rights text alone is not accepted, since it doesn't say *which* licence
   applies and an NC or ND obligation could hide behind it. Absent licence
   fields fail closed.
+- **Internet-Archive-sourced** records put a bare status token
+  (`NOT_IN_COPYRIGHT`, `PUBLIC_DOMAIN`) in the *licence* field and leave the
+  rights text empty. A public-domain status is a status, not a licence, so the
+  PD vocabulary is matched against every rights and licence field. Only the CC
+  vocabulary is restricted to the licence fields.
 
 Negations are handled explicitly, because BHL's PD vocabulary includes
 "Not in copyright" and "no longer under copyright" — matching `in copyright`
