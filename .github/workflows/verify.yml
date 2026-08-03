@@ -57,11 +57,47 @@ jobs:
           fi
           if [ -n "$ANTHROPIC_API_KEY" ]; then
             echo "anthropic=true" >> "$GITHUB_OUTPUT"
-            echo "ANTHROPIC_API_KEY present."
+            echo "ANTHROPIC_API_KEY present (${#ANTHROPIC_API_KEY} chars)."
           else
             echo "anthropic=false" >> "$GITHUB_OUTPUT"
             echo "::warning::ANTHROPIC_API_KEY not set -- dry run skipped."
           fi
+
+      # Credentials copied via a notes app can pick up smart-punctuation
+      # damage: an autocorrected en/em dash or soft hyphen looks like a hyphen
+      # but is a different character, and the only symptom is a 401 that reads
+      # like a wrong key rather than a corrupted one. These checks report the
+      # SHAPE of each secret -- never its value.
+      - name: Secret shape check
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          check() {
+            name="$1"; value="$2"; want_prefix="$3"
+            [ -z "$value" ] && return 0
+            printf '%s: %s chars' "$name" "${#value}"
+            # Count characters outside the ASCII set these keys use.
+            odd=$(printf '%s' "$value" | LC_ALL=C tr -d 'A-Za-z0-9_-' | wc -c | tr -d ' ')
+            if [ "$odd" -gt 0 ]; then
+              printf ' -- %s unexpected byte(s)\n' "$odd"
+              echo "::error::$name contains $odd byte(s) outside [A-Za-z0-9_-] (a UTF-8 dash is 3 bytes)."
+              echo "This usually means smart-punctuation damage (en/em dash or soft hyphen"
+              echo "in place of '-'). Regenerate the key and paste it directly into the"
+              echo "secret field without passing it through a notes or word processor."
+              return 1
+            fi
+            printf ' -- charset ok'
+            case "$value" in
+              ${want_prefix}*) printf ', prefix ok\n' ;;
+              *) printf ', PREFIX MISMATCH (expected %s...)\n' "$want_prefix"
+                 echo "::warning::$name does not start with '$want_prefix'." ;;
+            esac
+          }
+          rc=0
+          check ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY" "sk-ant-" || rc=1
+          check BHL_API_KEY "$BHL_API_KEY" "" || rc=1
+          exit $rc
 
       - name: Live tests against the real BHL API
         if: steps.secrets.outputs.bhl == 'true'
