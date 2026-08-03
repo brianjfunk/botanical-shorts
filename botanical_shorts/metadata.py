@@ -13,6 +13,22 @@ from .vision import VisionVerdict
 YOUTUBE_TITLE_LIMIT = 100
 YOUTUBE_DESC_LIMIT = 5000
 
+# BHL mirrors bare status tokens from upstream sources (Internet Archive uses
+# NOT_IN_COPYRIGHT). Those are fine to gate on but read as machine output in a
+# public description, so they get a human-readable label.
+RIGHTS_LABELS = {
+    "not_in_copyright": "Public domain",
+    "not_in_copyright_usa": "Public domain in the USA",
+    "public_domain": "Public domain",
+    "public_domain_us_google_digitized": "Public domain, Google-digitised",
+}
+
+
+def humanize_rights(value: str) -> str:
+    """Render a rights value for a viewer rather than a gate."""
+    text = str(value or "").strip()
+    return RIGHTS_LABELS.get(text.lower().replace("-", "_"), text)
+
 
 def build_title(candidate: PageCandidate, verdict: VisionVerdict | None) -> str:
     """A short, plain title.
@@ -49,7 +65,9 @@ def build_description(candidate: PageCandidate, verdict: VisionVerdict | None) -
     if candidate.source:
         lines.append(f"Digitised by {candidate.source}.")
 
-    rights_bits = [b for b in (candidate.rights, candidate.license_name) if b]
+    rights_bits = [
+        b for b in (humanize_rights(candidate.rights), candidate.license_name) if b
+    ]
     if rights_bits:
         lines.append("")
         lines.append("Rights: " + " / ".join(rights_bits))

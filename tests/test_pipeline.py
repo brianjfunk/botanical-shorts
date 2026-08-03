@@ -756,3 +756,17 @@ def test_transient_vision_failure_still_degrades_to_a_rejection():
     assert verdict.error, "a transient failure should be reported, not raised"
     ok, reason = passes(verdict, min_quality=7, caption_mode="log_only")
     assert not ok and "errored" in reason
+
+
+def test_raw_status_tokens_are_humanised_in_the_description():
+    # The live dry run put "Rights: NOT_IN_COPYRIGHT" in a public-facing video
+    # description. Fine as a gate value, machine-readable noise to a viewer.
+    cand = make_candidate(rights="NOT_IN_COPYRIGHT", license_name="", license_url="")
+    desc = metadata.build_description(cand, None)
+    assert "Rights: Public domain" in desc
+    assert "NOT_IN_COPYRIGHT" not in desc
+
+
+def test_prose_rights_text_is_left_alone():
+    cand = make_candidate(rights="Public domain. The BHL considers this work no longer under copyright.")
+    assert "The BHL considers" in metadata.build_description(cand, None)
