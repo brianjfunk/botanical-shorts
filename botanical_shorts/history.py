@@ -37,6 +37,14 @@ class History:
         self._page_ids = {str(e.get("page_id")) for e in self.entries if e.get("page_id")}
         self._item_ids = {str(e.get("item_id")) for e in self.entries if e.get("item_id")}
 
+    @property
+    def page_ids(self) -> set[str]:
+        return self._page_ids
+
+    @property
+    def item_ids(self) -> set[str]:
+        return self._item_ids
+
     def has_page(self, page_id: str) -> bool:
         return str(page_id) in self._page_ids
 

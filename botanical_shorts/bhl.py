@@ -290,13 +290,28 @@ def iter_candidates(
     max_items_per_title: int,
     max_pages_per_item: int,
     limit: int,
+    skip_pages: Iterable[str] = (),
+    skip_items: Iterable[str] = (),
+    title_offset: int = 0,
 ) -> Iterator[PageCandidate]:
     """Walk subject -> title -> item -> page, yielding illustration plates.
 
     Yields lazily so callers can stop as soon as they have a usable plate,
     rather than paying for the whole traversal every run.
+
+    ``skip_pages`` / ``skip_items`` carry what has already been published.
+    Filtering here rather than in the caller matters: an already-used
+    candidate must not consume ``limit``, or the same fixed window of
+    candidates fills with history until no new plate can ever surface.
+    Skipping a whole item early also avoids a pointless GetItemMetadata call.
+
+    ``title_offset`` rotates the starting point in each subject's title list,
+    so consecutive runs explore different works instead of re-walking (and
+    re-skipping) the same head of the list every day.
     """
     wanted_types = {t.strip().lower() for t in page_types}
+    seen_pages = {str(p) for p in skip_pages}
+    seen_items = {str(i) for i in skip_items}
     emitted = 0
 
     for subject in subjects:
@@ -308,6 +323,11 @@ def iter_candidates(
         if not titles:
             log.warning("subject %r returned no title-level publications", subject)
             continue
+
+        # Rotate the window so each run starts somewhere new in the pool.
+        if titles and title_offset:
+            start = title_offset % len(titles)
+            titles = titles[start:] + titles[:start]
 
         for title_rec in titles[:titles_per_subject]:
             if emitted >= limit:
@@ -340,7 +360,9 @@ def iter_candidates(
                 if emitted >= limit:
                     return
                 item_id = str(pick(item_rec, "item_id") or "")
-                if not item_id:
+                if not item_id or item_id in seen_items:
+                    # Already featured: skip before the metadata call, and
+                    # without spending any of `limit`.
                     continue
 
                 try:
@@ -365,7 +387,7 @@ def iter_candidates(
                     if not any(pt.lower() in wanted_types for pt in ptypes):
                         continue
                     page_id = str(pick(page_rec, "page_id") or "")
-                    if not page_id:
+                    if not page_id or page_id in seen_pages:
                         continue
 
                     kept_from_item += 1

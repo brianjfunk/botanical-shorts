@@ -29,11 +29,20 @@ def _setup_logging(verbose: bool) -> None:
 
 def cmd_run(args: argparse.Namespace) -> int:
     cfg = load_config(args.config)
-    result = pipeline.run(cfg, dry_run=args.dry_run, skip_upload=args.skip_upload)
-    if not result.accepted:
+    results = pipeline.run(
+        cfg, dry_run=args.dry_run, skip_upload=args.skip_upload, count=args.count
+    )
+    accepted = [r for r in results if r.accepted]
+    print(json.dumps([r.summary for r in accepted], indent=2, ensure_ascii=False))
+
+    if not accepted:
         print("No publishable plate found this run.", file=sys.stderr)
         return 1
-    print(json.dumps(result.summary, indent=2, ensure_ascii=False))
+    if len(accepted) < args.count:
+        print(
+            f"Produced {len(accepted)} of {args.count} requested plates.", file=sys.stderr
+        )
+        return 1
     return 0
 
 
@@ -220,6 +229,10 @@ def main(argv: list[str] | None = None) -> int:
     p_run = sub.add_parser("run", help="run the daily pipeline")
     p_run.add_argument("--dry-run", action="store_true", help="select and frame only")
     p_run.add_argument("--skip-upload", action="store_true", help="render but do not upload")
+    p_run.add_argument(
+        "--count", type=int, default=1,
+        help="how many plates to produce (for seeding a new channel)",
+    )
     p_run.set_defaults(func=cmd_run)
 
     p_verify = sub.add_parser("verify-bhl", help="confirm BHL field mapping against the live API")

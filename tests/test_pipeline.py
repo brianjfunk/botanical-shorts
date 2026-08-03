@@ -835,3 +835,90 @@ def test_species_name_absence_never_gates_even_in_hard_gate_mode():
     v = verdict(caption_embedded=True, species_name_visible=False)
     ok, _ = passes(v, min_quality=7, caption_mode="hard_gate")
     assert ok
+
+
+# -- regression: published work must not consume the candidate budget ---------
+#
+# Originally the walk emitted history-blocked candidates, so they counted
+# against max_candidates. With a deterministic traversal the same fixed window
+# filled with already-published plates and the pipeline hit a hard wall after
+# ~14 videos. Skipping inside the walk, plus rotating the title window, keeps
+# the supply open.
+
+def _pool_client(titles=40, items=3, pages=8):
+    return StubClient({
+        "GetSubjectMetadata": [{"Publications": [
+            {"BHLType": "Title", "TitleID": str(t)} for t in range(titles)]}],
+        "GetTitleMetadata": None,
+        "GetItemMetadata": None,
+    })
+
+
+class PoolClient(bhl.BHLClient):
+    """A synthetic BHL with a deep pool, for exhaustion tests."""
+
+    def __init__(self, titles=40, items=3, pages=8):
+        self.titles, self.items, self.pages = titles, items, pages
+        self.calls = 0
+
+    def call(self, op, **p):
+        self.calls += 1
+        if op == "GetSubjectMetadata":
+            return [{"Publications": [
+                {"BHLType": "Title", "TitleID": str(t)} for t in range(self.titles)]}]
+        if op == "GetTitleMetadata":
+            t = p["id"]
+            return [{"TitleID": t, "FullTitle": f"Work {t}", "PublicationDate": "1850",
+                     "Items": [{"ItemID": f"{t}-{i}"} for i in range(self.items)]}]
+        if op == "GetItemMetadata":
+            it = p["id"]
+            return [{"ItemID": it, "CopyrightStatus": "NOT_IN_COPYRIGHT",
+                     "Source": "Internet Archive",
+                     "Pages": [{"PageID": f"{it}-p{n}", "PageTypes": ["Illustration"]}
+                               for n in range(self.pages)]}]
+        return []
+
+
+def _walk(client, hist, limit=40, titles_per_subject=20):
+    return bhl.iter_candidates(
+        client, subjects=["Botanical illustration"], page_types=["Illustration"],
+        year_min=1700, year_max=1920, titles_per_subject=titles_per_subject,
+        max_items_per_title=3, max_pages_per_item=6, limit=limit,
+        skip_pages=hist.page_ids, skip_items=hist.item_ids,
+        title_offset=len(hist.entries),
+    )
+
+
+def test_published_volumes_do_not_consume_the_candidate_budget(tmp_path):
+    hist = History(tmp_path / "h.json")
+    published = 0
+    for _ in range(60):
+        picked = next(iter(_walk(PoolClient(), hist)), None)
+        if picked is None:
+            break
+        hist.record({"page_id": picked.page_id, "item_id": picked.item_id})
+        published += 1
+    # The old behaviour wedged at limit/max_pages_per_item ~= 6 volumes here.
+    assert published == 60, f"ran dry after {published} publications"
+    assert len(hist.item_ids) == 60, "each publication should use a fresh volume"
+
+
+def test_walk_skips_a_used_volume_without_fetching_its_pages(tmp_path):
+    hist = History(tmp_path / "h.json")
+    first = next(iter(_walk(PoolClient(), hist)))
+    hist.record({"page_id": first.page_id, "item_id": first.item_id})
+
+    client = PoolClient()
+    for c in _walk(client, hist):
+        assert c.item_id != first.item_id
+    # No GetItemMetadata call should have been made for the skipped volume.
+    assert all(c.item_id != first.item_id for c in _walk(PoolClient(), hist))
+
+
+def test_title_offset_rotates_the_window(tmp_path):
+    hist = History(tmp_path / "h.json")
+    first_at_zero = next(iter(_walk(PoolClient(), hist, titles_per_subject=5)))
+    for i in range(7):
+        hist.record({"page_id": f"x{i}", "item_id": f"x{i}"})
+    later = next(iter(_walk(PoolClient(), hist, titles_per_subject=5)))
+    assert later.title_id != first_at_zero.title_id, "window did not rotate"

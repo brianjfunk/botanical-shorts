@@ -26,11 +26,13 @@ source:
   year_min: 1700
   year_max: 1920
 
-  titles_per_subject: 12
+  # 'Botanical illustration' alone returns 152 title-level works; the old
+  # window of 12 was a small fraction of the available pool.
+  titles_per_subject: 60
   max_items_per_title: 3
   # Cap per volume so one heavily-illustrated book cannot dominate the pool.
   max_pages_per_item: 6
-  max_candidates: 80
+  max_candidates: 400
 
 license:
   # Allowlist, matched case-insensitively as substrings against BHL's

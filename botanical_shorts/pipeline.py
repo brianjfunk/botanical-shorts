@@ -73,6 +73,11 @@ def select_and_build(
         max_items_per_title=cfg.source.max_items_per_title,
         max_pages_per_item=cfg.source.max_pages_per_item,
         limit=cfg.source.max_candidates,
+        # Published work is filtered inside the walk so it never consumes the
+        # candidate budget, and the window rotates as the channel grows.
+        skip_pages=history.page_ids,
+        skip_items=history.item_ids,
+        title_offset=len(history.entries),
     )
 
     for candidate in candidates:
@@ -201,9 +206,38 @@ def select_and_build(
     return RunResult(accepted=False, rejections=rejections)
 
 
-def run(cfg: Config, *, dry_run: bool = False, skip_upload: bool = False) -> RunResult:
-    """One full daily run."""
+def run(
+    cfg: Config,
+    *,
+    dry_run: bool = False,
+    skip_upload: bool = False,
+    count: int = 1,
+) -> list[RunResult]:
+    """Produce ``count`` plates. Normally 1; more for seeding a new channel.
+
+    History is recorded between iterations, so a batch never picks the same
+    plate or volume twice.
+    """
     history = History(cfg.history_path)
+    results: list[RunResult] = []
+    for n in range(count):
+        if count > 1:
+            log.info("--- plate %d of %d ---", n + 1, count)
+        result = _run_once(cfg, history, dry_run=dry_run, skip_upload=skip_upload)
+        results.append(result)
+        if not result.accepted:
+            log.error("stopping batch after %d of %d", n, count)
+            break
+    return results
+
+
+def _run_once(
+    cfg: Config,
+    history: History,
+    *,
+    dry_run: bool = False,
+    skip_upload: bool = False,
+) -> RunResult:
     result = select_and_build(cfg, history=history, dry_run=dry_run)
 
     if not result.accepted:
