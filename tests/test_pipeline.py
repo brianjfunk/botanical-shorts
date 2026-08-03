@@ -611,9 +611,22 @@ def test_previously_rejected_pages_have_usable_image_urls(page_id):
     assert cand.page_url.endswith(f"/page/{page_id}")
 
 
+def _live_key() -> str:
+    """The BHL key, or "" if it is absent or an obvious placeholder.
+
+    Placeholders matter: a shell that exported a literal "..." from a pasted
+    command satisfies a plain truthiness check, so the live tests would run
+    against a bogus key and fail as if the licence gate were broken.
+    """
+    key = os.environ.get("BHL_API_KEY", "").strip()
+    if key.strip(".") == "" or key.lower() in {"changeme", "your-key", "xxx"}:
+        return ""
+    return key
+
+
 @pytest.mark.skipif(
-    not os.environ.get("BHL_API_KEY"),
-    reason="needs BHL_API_KEY and network access to biodiversitylibrary.org",
+    not _live_key(),
+    reason="needs a real BHL_API_KEY and network access to biodiversitylibrary.org",
 )
 @pytest.mark.parametrize("page_id", REJECTED_PAGE_IDS)
 def test_live_rejected_pages_pass_with_real_metadata(page_id, license_cfg):
@@ -622,7 +635,7 @@ def test_live_rejected_pages_pass_with_real_metadata(page_id, license_cfg):
     This is the test that would catch a field-mapping regression: it reads
     whatever BHL actually returns today rather than a reconstructed shape.
     """
-    client = bhl.BHLClient(os.environ["BHL_API_KEY"])
+    client = bhl.BHLClient(_live_key())
 
     page_meta = client.get_page_metadata(page_id)
     assert page_meta, f"page {page_id} returned no metadata"
