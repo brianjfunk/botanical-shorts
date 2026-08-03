@@ -123,7 +123,19 @@ pip install -r requirements.txt
 python scripts/get_youtube_refresh_token.py --client-secrets client_secret.json
 ```
 
-### 3. Confirm the BHL field mapping
+### 3. Verification runs on Actions, not on your laptop
+
+`.github/workflows/verify.yml` runs the offline suite, the live BHL tests,
+`verify-bhl`, and a dry run that selects and frames a real plate — then uploads
+the framed PNG as an artifact. It fires on every push to `claude/**` and can be
+dispatched by hand from the Actions tab.
+
+This exists so verification never requires anyone to run commands locally and
+paste output back. Actions runners reach biodiversitylibrary.org; development
+sandboxes often can't. Steps needing credentials skip with a warning when the
+matching secret is absent, so a missing key never hides a code regression.
+
+### 4. Confirm the BHL field mapping
 
 BHL's JSON field names vary between methods, and the published schema was not
 reachable from the build environment, so every field read goes through an alias

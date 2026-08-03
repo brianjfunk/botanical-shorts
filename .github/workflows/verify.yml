@@ -37,32 +37,46 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
-      - name: Check BHL_API_KEY is configured
-        env:
-          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
-        run: |
-          if [ -z "$BHL_API_KEY" ]; then
-            echo "::error::BHL_API_KEY repository secret is not set."
-            echo "Add it under Settings -> Secrets and variables -> Actions."
-            echo "Without it the live checks cannot run."
-            exit 1
-          fi
-          echo "BHL_API_KEY is present (${#BHL_API_KEY} chars)."
-
+      # The offline suite needs no credentials, so it always runs -- a missing
+      # secret should never hide a code regression.
       - name: Offline test suite
         run: python -m pytest tests/ -q
 
+      - name: Which secrets are available
+        id: secrets
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$BHL_API_KEY" ]; then
+            echo "bhl=true" >> "$GITHUB_OUTPUT"
+            echo "BHL_API_KEY present (${#BHL_API_KEY} chars)."
+          else
+            echo "bhl=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::BHL_API_KEY not set -- live checks skipped. Add it under Settings > Secrets and variables > Actions."
+          fi
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            echo "anthropic=true" >> "$GITHUB_OUTPUT"
+            echo "ANTHROPIC_API_KEY present."
+          else
+            echo "anthropic=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::ANTHROPIC_API_KEY not set -- dry run skipped."
+          fi
+
       - name: Live tests against the real BHL API
+        if: steps.secrets.outputs.bhl == 'true'
         env:
           BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
         run: python -m pytest tests/ -v -k live
 
       - name: verify-bhl field mapping
+        if: steps.secrets.outputs.bhl == 'true'
         env:
           BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
         run: python -m botanical_shorts.cli verify-bhl
 
       - name: Dry run -- select, gate and frame a real plate
+        if: steps.secrets.outputs.bhl == 'true' && steps.secrets.outputs.anthropic == 'true'
         env:
           BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
