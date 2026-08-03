@@ -90,7 +90,11 @@ video:
   crf: 18
 
 upload:
-  enabled: true
+  # DISABLED: the first real upload landed on the wrong channel (a personal
+  # channel rather than @TheHerbalShorts), because the OAuth consent flow was
+  # completed with that channel selected. Re-enable once a refresh token bound
+  # to the intended channel is in place and `check-youtube` names it.
+  enabled: false
   privacy_status: "private"
   # The passive veto window -- auto-publishes unless pulled in Studio.
   publish_delay_hours: 24
