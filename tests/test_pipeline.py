@@ -78,11 +78,9 @@ def test_citation_includes_title_author_year():
 
 @pytest.fixture
 def license_cfg() -> LicenseConfig:
-    return LicenseConfig(
-        allowed_rights=["public domain", "cc0"],
-        allowed_licenses=["cc0", "cc by"],
-        allow_unknown=False,
-    )
+    # Mirrors the shipped allowlist, so these tests exercise the vocabulary the
+    # pipeline will actually meet rather than a convenient subset.
+    return load_config().license
 
 
 def test_public_domain_allowed(license_cfg):
@@ -476,3 +474,58 @@ def test_iter_candidates_skips_titles_outside_the_year_window():
         limit=10,
     ))
     assert got == []
+
+
+# -- licensing: the two tracks BHL actually populates -------------------------
+
+@pytest.mark.parametrize(
+    "rights",
+    [
+        # BHL's real PD wording -- licence fields are empty for these.
+        "Public domain. The BHL considers this work no longer under copyright.",
+        "Public domain",
+        "Public Domain, Google-digitized",
+        "Not in copyright",
+        "NOT_IN_COPYRIGHT",
+        "No known copyright restrictions",
+    ],
+)
+def test_public_domain_rights_text_passes_without_licence_fields(rights, license_cfg):
+    # Requiring LicenseName/LicenseUrl here would reject every genuine PD item,
+    # because BHL simply does not populate them for public domain.
+    cand = make_candidate(rights=rights, license_name="", license_url="")
+    verdict = licensing.evaluate(cand, license_cfg)
+    assert verdict.allowed, f"{rights!r} rejected: {verdict.reason}"
+
+
+@pytest.mark.parametrize(
+    "rights", ["In copyright", "In Copyright - Rights-holder(s) unlocated"]
+)
+def test_unnegated_in_copyright_still_rejected(rights, license_cfg):
+    assert not licensing.evaluate(make_candidate(rights=rights), license_cfg).allowed
+
+
+def test_cc_licence_read_from_licence_fields(license_cfg):
+    cand = make_candidate(
+        rights="",
+        license_name="CC BY 4.0",
+        license_url="https://creativecommons.org/licenses/by/4.0/",
+    )
+    assert licensing.evaluate(cand, license_cfg).allowed
+
+
+def test_cc_wording_in_rights_text_alone_fails_closed(license_cfg):
+    # Rights text saying "Creative Commons" does not say *which* licence, so an
+    # NC or ND obligation could hide behind it. The licence fields are required.
+    cand = make_candidate(rights="Creative Commons Attribution", license_name="", license_url="")
+    verdict = licensing.evaluate(cand, license_cfg)
+    assert not verdict.allowed
+
+
+def test_restrictive_cc_licences_rejected_from_url_alone(license_cfg):
+    cand = make_candidate(
+        rights="",
+        license_name="",
+        license_url="https://creativecommons.org/licenses/by-nc-sa/4.0/",
+    )
+    assert not licensing.evaluate(cand, license_cfg).allowed

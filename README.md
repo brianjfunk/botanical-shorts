@@ -49,6 +49,27 @@ so a normal run costs a handful of BHL calls and one vision call.
 | Caption check | `vision.caption_mode` | `log_only` — the verdict is recorded but not enforced in v1 |
 | Duration | `video.duration_seconds` | 2.0s |
 
+### On the licence gate
+
+BHL populates its rights fields differently depending on the kind of item, so
+the gate reads two tracks:
+
+- **Public domain** items declare status only as free rights text
+  (`RightsStatus` / `Rights` / `CopyrightStatus`) — *"Public domain. The BHL
+  considers this work no longer under copyright."* — and leave the licence
+  fields empty. Clear PD language in that text is sufficient on its own.
+  Requiring `LicenseName`/`LicenseUrl` here would reject essentially every real
+  PD item.
+- **CC-licensed** items are the reverse: the specific licence lives in
+  `LicenseName`/`LicenseUrl` and is read from there. CC-ish wording in the
+  rights text alone is not accepted, since it doesn't say *which* licence
+  applies and an NC or ND obligation could hide behind it. Absent licence
+  fields fail closed.
+
+Negations are handled explicitly, because BHL's PD vocabulary includes
+"Not in copyright" and "no longer under copyright" — matching `in copyright`
+blindly would reject exactly the items the channel most wants.
+
 ### On `caption_mode`
 
 BHL flags *which pages are illustration plates* (that's `PageTypes`, and the
