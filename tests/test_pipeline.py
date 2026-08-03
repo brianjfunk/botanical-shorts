@@ -712,3 +712,47 @@ def test_live_shaped_item_uses_copyrightstatus_for_rights(license_cfg):
         license_url="",
     )
     assert licensing.evaluate(cand, license_cfg).allowed
+
+
+# -- regression: a rejected Anthropic key must fail fast ----------------------
+#
+# A dry run on Actions with an invalid ANTHROPIC_API_KEY burned all 12 vision
+# calls re-proving the same 401, then reported "no publishable plate found" --
+# which points at the candidate pool rather than at the credential.
+
+class _AuthError(Exception):
+    status_code = 401
+
+
+class _FakeMessages:
+    def __init__(self, exc):
+        self.exc = exc
+        self.calls = 0
+
+    def create(self, **kwargs):
+        self.calls += 1
+        raise self.exc
+
+
+class _FakeAnthropic:
+    def __init__(self, exc):
+        self.messages = _FakeMessages(exc)
+
+
+def test_rejected_api_key_raises_instead_of_rejecting_the_candidate():
+    from botanical_shorts.vision import VisionAuthError, inspect_plate
+
+    client = _FakeAnthropic(_AuthError("API key is invalid."))
+    with pytest.raises(VisionAuthError, match="rejected the API key"):
+        inspect_plate(client, make_plate(), model="claude-sonnet-5")
+    assert client.messages.calls == 1, "must not retry a permanently bad credential"
+
+
+def test_transient_vision_failure_still_degrades_to_a_rejection():
+    from botanical_shorts.vision import inspect_plate
+
+    client = _FakeAnthropic(RuntimeError("connection reset"))
+    verdict = inspect_plate(client, make_plate(), model="claude-sonnet-5")
+    assert verdict.error, "a transient failure should be reported, not raised"
+    ok, reason = passes(verdict, min_quality=7, caption_mode="log_only")
+    assert not ok and "errored" in reason

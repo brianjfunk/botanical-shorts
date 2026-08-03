@@ -30,6 +30,17 @@ log = logging.getLogger(__name__)
 # the presence of lettering, neither of which needs full plate resolution.
 VISION_MAX_EDGE = 1200
 
+
+class VisionAuthError(RuntimeError):
+    """The Anthropic credential was rejected.
+
+    Kept distinct from an ordinary vision failure because it is not a property
+    of the candidate: retrying on the next plate cannot help, and treating it
+    as a per-candidate rejection burns the whole call budget re-proving the
+    same broken credential before reporting a misleading "no publishable plate
+    found".
+    """
+
 PROMPT = """You are inspecting a scanned page from a historical natural history \
 book, digitised by the Biodiversity Heritage Library. It is intended for use as a \
 still image in a short video, presented exactly as scanned with no added text.
@@ -129,6 +140,12 @@ def inspect_plate(client, img: Image.Image, *, model: str) -> VisionVerdict:
         raw = "".join(block.text for block in message.content if block.type == "text")
         data = _parse(raw)
     except Exception as exc:
+        if getattr(exc, "status_code", None) in (401, 403):
+            raise VisionAuthError(
+                "Anthropic rejected the API key (HTTP "
+                f"{getattr(exc, 'status_code', '?')}). Check the ANTHROPIC_API_KEY "
+                "secret; no amount of retrying will help."
+            ) from exc
         log.warning("vision inspection failed: %s", exc)
         return VisionVerdict(
             scan_quality=0,

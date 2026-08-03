@@ -18,7 +18,7 @@ import requests
 from . import bhl, imaging, licensing, metadata, notify, video, youtube
 from .config import Config, require_env
 from .history import History
-from .vision import VisionVerdict, inspect_plate, passes
+from .vision import VisionAuthError, VisionVerdict, inspect_plate, passes
 
 log = logging.getLogger(__name__)
 
@@ -109,6 +109,8 @@ def select_and_build(
                 rejections.append(Rejection(page_id, "vision", "vision call budget exhausted"))
                 break
             vision_calls += 1
+            # A rejected credential is fatal, not a property of this candidate;
+            # let it propagate rather than burning the budget on every plate.
             vision_verdict = inspect_plate(vision_client, img, model=cfg.vision.model)
             ok, reason = passes(
                 vision_verdict,
