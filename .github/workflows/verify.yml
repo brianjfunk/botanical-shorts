@@ -1,0 +1,141 @@
+name: Verify BHL integration
+
+# Exists so verification does not require anyone's laptop. Actions runners have
+# unrestricted network access to biodiversitylibrary.org, which the development
+# sandbox does not, so this is where the live checks actually run -- and their
+# logs are readable without pasting terminal output around.
+#
+# Triggers on push to development branches so a change is verified as soon as
+# it lands, and by hand from the Actions tab.
+
+on:
+  push:
+    branches:
+      - "claude/**"
+      - "verify/**"
+    paths-ignore:
+      - "README.md"
+  workflow_dispatch:
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      # The offline suite needs no credentials, so it always runs -- a missing
+      # secret should never hide a code regression.
+      - name: Offline test suite
+        run: python -m pytest tests/ -q
+
+      - name: Which secrets are available
+        id: secrets
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$BHL_API_KEY" ]; then
+            echo "bhl=true" >> "$GITHUB_OUTPUT"
+            echo "BHL_API_KEY present (${#BHL_API_KEY} chars)."
+          else
+            echo "bhl=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::BHL_API_KEY not set -- live checks skipped. Add it under Settings > Secrets and variables > Actions."
+          fi
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            echo "anthropic=true" >> "$GITHUB_OUTPUT"
+            echo "ANTHROPIC_API_KEY present (${#ANTHROPIC_API_KEY} chars)."
+          else
+            echo "anthropic=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::ANTHROPIC_API_KEY not set -- dry run skipped."
+          fi
+
+      # Credentials copied via a notes app can pick up smart-punctuation
+      # damage: an autocorrected en/em dash or soft hyphen looks like a hyphen
+      # but is a different character, and the only symptom is a 401 that reads
+      # like a wrong key rather than a corrupted one. These checks report the
+      # SHAPE of each secret -- never its value.
+      - name: Secret shape check
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          check() {
+            name="$1"; value="$2"; want_prefix="$3"
+            [ -z "$value" ] && return 0
+            printf '%s: %s chars' "$name" "${#value}"
+            # Count characters outside the ASCII set these keys use.
+            odd=$(printf '%s' "$value" | LC_ALL=C tr -d 'A-Za-z0-9_-' | wc -c | tr -d ' ')
+            if [ "$odd" -gt 0 ]; then
+              printf ' -- %s unexpected byte(s)\n' "$odd"
+              echo "::error::$name contains $odd byte(s) outside [A-Za-z0-9_-] (a UTF-8 dash is 3 bytes)."
+              echo "This usually means smart-punctuation damage (en/em dash or soft hyphen"
+              echo "in place of '-'). Regenerate the key and paste it directly into the"
+              echo "secret field without passing it through a notes or word processor."
+              return 1
+            fi
+            printf ' -- charset ok'
+            case "$value" in
+              ${want_prefix}*) printf ', prefix ok\n' ;;
+              *) printf ', PREFIX MISMATCH (expected %s...)\n' "$want_prefix"
+                 echo "::warning::$name does not start with '$want_prefix'." ;;
+            esac
+          }
+          rc=0
+          check ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY" "sk-ant-" || rc=1
+          check BHL_API_KEY "$BHL_API_KEY" "" || rc=1
+          exit $rc
+
+      - name: Live tests against the real BHL API
+        if: steps.secrets.outputs.bhl == 'true'
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+        run: python -m pytest tests/ -v -k live
+
+      - name: verify-bhl field mapping
+        if: steps.secrets.outputs.bhl == 'true'
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+        run: python -m botanical_shorts.cli verify-bhl
+
+      - name: Dry run -- select, gate and frame a real plate
+        if: steps.secrets.outputs.bhl == 'true' && steps.secrets.outputs.anthropic == 'true'
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python -m botanical_shorts.cli -v run --dry-run
+
+      # Uploads nothing -- just exchanges the refresh token. Catches an OAuth
+      # app left in Testing mode, whose tokens expire after ~7 days and would
+      # otherwise break the daily run silently, a week from now.
+      - name: YouTube credential preflight
+        if: always()
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+        run: python -m botanical_shorts.cli check-youtube
+
+      - name: Upload framed plate for visual review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-output
+          path: |
+            build/*.png
+            build/summary.json
+          if-no-files-found: ignore
+          retention-days: 14
