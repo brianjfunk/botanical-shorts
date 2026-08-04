@@ -955,7 +955,7 @@ def test_shipped_config_carries_the_ported_gates():
     # check was built for. It cost roughly a quarter of the usable pool.
     assert cfg.image.min_border_luminance == 60
     assert cfg.image.min_ink_coverage == 0.05
-    assert cfg.source.title_cooldown == 40
+    assert cfg.source.title_cooldown == 120
 
 
 def test_black_framed_scan_is_rejected_before_framing():

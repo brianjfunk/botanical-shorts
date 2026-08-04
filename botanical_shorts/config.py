@@ -40,9 +40,9 @@ class SourceConfig:
     max_candidates: int
     # How many recently published videos a work stays locked for. Guards
     # against near-identical plates from one long-running serial landing close
-    # together in the feed. Bounded by the number of distinct usable titles:
-    # a survey found 82, so a cooldown much above half that starves the walk.
-    title_cooldown: int = 40
+    # together in the feed. Bounded by the number of distinct usable titles --
+    # a cooldown approaching that count leaves the walk nothing to publish.
+    title_cooldown: int = 120
 
 
 @dataclass(frozen=True)

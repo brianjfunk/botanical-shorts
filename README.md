@@ -180,7 +180,13 @@ Two things govern how many videos can actually appear:
 
 * **The plate pool is finite.** Every published plate is retired from it
   permanently, and the quality gates retire many more unpublished. Five a week
-  rather than seven is a deliberate concession to that.
+  rather than seven is a deliberate concession to that. Run
+  `pool-survey` to measure it; as of the last survey it was ~1360 usable
+  plates across 257 distinct works.
+* **Works go on cooldown.** `source.title_cooldown` locks a work for that many
+  published videos, so two plates from one long-running serial cannot land near
+  each other. Its ceiling is the distinct-title count, not the plate count:
+  a serial contributes thousands of plates but one title.
 * **YouTube caps uploads per day.** The seeding batch hit
   `uploadLimitExceeded` at video 19. Deleting videos does not refund the
   allowance -- it counts upload attempts, not videos currently on the channel.

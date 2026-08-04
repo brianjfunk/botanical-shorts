@@ -48,10 +48,17 @@ source:
   # Cap per volume so one heavily-illustrated book cannot dominate the pool.
   max_pages_per_item: 6
   max_candidates: 400
-  # Works stay locked for this many published videos. 40 is ~two months at five
-  # a week, and roughly half the 82 distinct usable titles a pool survey found
-  # -- push it much higher and the walk runs out of unlocked works.
-  title_cooldown: 40
+  # Works stay locked for this many published videos: 120 is about 5.5 months
+  # at five a week.
+  #
+  # Bounded by distinct usable titles, which a survey put at 257 once
+  # titles_per_subject reached 400. Deliberately under half of that rather than
+  # the 130 a full six months would need, because the two failure directions
+  # are not symmetric: too short means an occasional near-repeat, which is
+  # survivable and which Brian judged acceptable months apart. Too long means
+  # the walk finds no unlocked work, the run publishes nothing, and the channel
+  # silently goes quiet.
+  title_cooldown: 120
 
 license:
   # Allowlist, matched case-insensitively as substrings against BHL's
