@@ -4,6 +4,7 @@
     python -m botanical_shorts.cli run --dry-run # no render, no upload
     python -m botanical_shorts.cli verify-bhl    # confirm live API field names
     python -m botanical_shorts.cli preview IMAGE # compare letterbox treatments
+    python -m botanical_shorts.cli channel-art   # build banner + profile picture
 """
 
 from __future__ import annotations
@@ -205,6 +206,46 @@ def cmd_check_youtube(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_channel_art(args: argparse.Namespace) -> int:
+    """Build the channel banner and profile picture from real plates.
+
+    Uploads nothing -- YouTube's branding endpoints are a different scope, and
+    channel art is a set-once decision worth looking at before it lands. The
+    outputs go in ``build/channel-art/`` and get attached to the workflow run.
+    """
+    from . import channel_art
+
+    cfg = load_config(args.config)
+    out_dir = Path(args.out) if args.out else cfg.output_dir / "channel-art"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    plates = channel_art.collect_plates(cfg, count=args.plates)
+    print(f"collected {len(plates)} licence-passed plates")
+
+    banner = channel_art.build_banner(
+        plates,
+        border_px=cfg.image.border_px,
+        border_color=cfg.image.border_color,
+    )
+    banner.save(out_dir / "banner.png")
+    channel_art.safe_area_preview(banner).save(out_dir / "banner-safe-area.png")
+
+    avatar_plate = channel_art.best_avatar_plate(plates)
+    avatar = channel_art.build_avatar(avatar_plate)
+    avatar.save(out_dir / "avatar.png")
+    channel_art.circular_preview(avatar).save(out_dir / "avatar-circle.png")
+
+    (out_dir / "credits.txt").write_text(channel_art.attribution_block(plates))
+
+    print(f"\nbanner       {banner.size[0]}x{banner.size[1]}  -> {out_dir / 'banner.png'}")
+    print(f"  safe area  cropped preview   -> {out_dir / 'banner-safe-area.png'}")
+    print(f"avatar       {avatar.size[0]}x{avatar.size[1]}    -> {out_dir / 'avatar.png'}")
+    print(f"  circular   masked preview    -> {out_dir / 'avatar-circle.png'}")
+    print(f"\navatar cropped from: {avatar_plate.citation}")
+    print("\nUpload the square avatar.png -- YouTube applies the circular mask itself.")
+    return 0
+
+
 def cmd_preview(args: argparse.Namespace) -> int:
     """Render the same plate under each letterbox treatment, side by side.
 
@@ -259,6 +300,13 @@ def main(argv: list[str] | None = None) -> int:
         "--video-id", help="also report which channel this video landed on and its state"
     )
     p_check.set_defaults(func=cmd_check_youtube)
+
+    p_art = sub.add_parser("channel-art", help="build the channel banner and profile picture")
+    p_art.add_argument(
+        "--plates", type=int, default=12, help="how many plates to collect for the banner row"
+    )
+    p_art.add_argument("--out", help="output directory")
+    p_art.set_defaults(func=cmd_channel_art)
 
     p_preview = sub.add_parser("preview", help="render letterbox treatments for sign-off")
     p_preview.add_argument("image", help="path to a source plate image")
