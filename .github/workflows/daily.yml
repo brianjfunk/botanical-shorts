@@ -7,8 +7,13 @@ name: Daily plate
 
 on:
   schedule:
-    # 13:10 UTC daily. Off the hour, since scheduled runs bunch up on the hour.
-    - cron: "10 13 * * *"
+    # Weekdays at 13:10 UTC -- five a week. Off the hour, since scheduled runs
+    # bunch up on the hour; GitHub's scheduler is best-effort either way and
+    # delays of an hour or more are normal, so treat the time as approximate.
+    #
+    # Five rather than seven because the pool of licence-passed, gate-passing
+    # plates is finite and every published plate is retired from it for good.
+    - cron: "10 13 * * 1-5"
   workflow_dispatch:
     inputs:
       dry_run:
