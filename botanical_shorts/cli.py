@@ -218,21 +218,54 @@ def cmd_find_subjects(args: argparse.Namespace) -> int:
     cfg = load_config(args.config)
     client = bhl.BHLClient(require_env("BHL_API_KEY"))
 
+    # The published API reference was not reachable when this was written, so
+    # the op name and its parameter are both guesses. SubjectSearch+searchterm
+    # returned an empty Result for every term -- including "botany" -- which is
+    # what a wrong op or wrong parameter name looks like, since a genuinely
+    # empty search would still be odd for so broad a word. Try the plausible
+    # spellings and report which one actually answers.
+    ops = [
+        ("SubjectSearch", "searchterm"),
+        ("SubjectSearch", "subject"),
+        ("GetSubjects", None),
+        ("SubjectList", None),
+    ]
+
+    def _probe(term: str) -> list[str]:
+        for op, param in ops:
+            kwargs = {param: term} if param else {}
+            try:
+                result = client.call(op, **kwargs)
+            except Exception as exc:
+                print(f"   {op}({param or ''}) -> error: {str(exc)[:70]}")
+                continue
+            records = bhl._as_list(result)
+            if not records:
+                print(f"   {op}({param or ''}) -> empty")
+                continue
+            print(f"   {op}({param or ''}) -> {len(records)} records")
+            if args.raw:
+                print(f"      record keys: {sorted(records[0].keys())}")
+                print(f"      first: {str(records[0])[:200]}")
+            names = []
+            for rec in records:
+                name = str(
+                    rec.get("SubjectText")
+                    or rec.get("Subject")
+                    or rec.get("Name")
+                    or rec.get("Title")
+                    or ""
+                ).strip()
+                if name:
+                    names.append(name)
+            if names:
+                return names
+        return []
+
     found: dict[str, int] = {}
     for term in args.terms:
-        print(f"\n== SubjectSearch({term!r})")
-        try:
-            result = client.call("SubjectSearch", searchterm=term)
-        except Exception as exc:
-            print(f"   search failed: {exc}")
-            continue
-        names = []
-        for rec in bhl._as_list(result):
-            name = str(
-                rec.get("SubjectText") or rec.get("Subject") or rec.get("Name") or ""
-            ).strip()
-            if name:
-                names.append(name)
+        print(f"\n== searching {term!r}")
+        names = _probe(term)
         print(f"   {len(names)} headings returned")
 
         for name in names[: args.per_term]:
@@ -562,6 +595,7 @@ def main(argv: list[str] | None = None) -> int:
     p_find = sub.add_parser("find-subjects", help="search BHL for subject headings that carry titles")
     p_find.add_argument("terms", nargs="+", help="search terms to probe")
     p_find.add_argument("--per-term", type=int, default=8, help="headings to test per term")
+    p_find.add_argument("--raw", action="store_true", help="dump raw record keys for diagnosis")
     p_find.set_defaults(func=cmd_find_subjects)
 
     p_back = sub.add_parser("backfill-history", help="resolve title_id for older history entries")
