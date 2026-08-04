@@ -1,0 +1,70 @@
+name: Pool survey
+
+# Measures how deep the usable plate pool is, and across how many distinct
+# works. That title count is what sets the ceiling on a title-level cooldown:
+# a cooldown of N videos needs N distinct usable titles to rotate through, and
+# a serial like Edwards's Botanical Register contributes thousands of plates
+# but only one title.
+#
+# Read-only and uploads nothing. Separate from `verify` because it walks the
+# whole candidate pool and fetches a sample of scans, so it takes far longer
+# than a verification run should.
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Candidates to walk"
+        type: string
+        default: "1500"
+      sample:
+        description: "Plates to fetch for the image gates"
+        type: string
+        default: "60"
+      titles:
+        description: "Override source.titles_per_subject (blank = use config)"
+        type: string
+        default: ""
+
+concurrency:
+  group: pool-survey
+  cancel-in-progress: true
+
+jobs:
+  survey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Survey the pool
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+        run: |
+          if [ -z "$BHL_API_KEY" ]; then
+            echo "::error::BHL_API_KEY is not set; cannot survey."
+            exit 1
+          fi
+          ARGS="--limit ${{ inputs.limit || '1500' }} --sample ${{ inputs.sample || '60' }}"
+          if [ -n "${{ inputs.titles }}" ]; then
+            ARGS="$ARGS --titles ${{ inputs.titles }}"
+          fi
+          python -m botanical_shorts.cli pool-survey $ARGS | tee survey.txt
+
+      - name: Upload survey
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pool-survey
+          path: survey.txt
+          if-no-files-found: ignore
+          retention-days: 30

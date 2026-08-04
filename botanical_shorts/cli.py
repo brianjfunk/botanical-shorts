@@ -15,7 +15,7 @@ import logging
 import sys
 from pathlib import Path
 
-from . import bhl, imaging, pipeline
+from . import bhl, imaging, licensing, pipeline
 from .config import ConfigError, load_config, optional_env, require_env
 
 
@@ -206,6 +206,120 @@ def cmd_check_youtube(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_pool_survey(args: argparse.Namespace) -> int:
+    """Measure how deep the usable plate pool is, and how many works it spans.
+
+    The question this answers is how long a *title-level cooldown* can be. That
+    is bounded by the number of distinct titles carrying at least one usable
+    plate, not by the plate count: a cooldown of N videos needs N distinct
+    titles to rotate through, and a serial like Edwards's Botanical Register
+    contributes thousands of plates but only one title.
+
+    Metadata and licensing are surveyed exhaustively, since they cost no
+    downloads. The image gates are sampled, because settling them for the whole
+    pool would mean fetching every scan.
+    """
+    import requests
+
+    cfg = load_config(args.config)
+    session = requests.Session()
+    client = bhl.BHLClient(require_env("BHL_API_KEY"), session=session)
+
+    titles_per_subject = args.titles or cfg.source.titles_per_subject
+
+    print("== Titles per subject (title-level publications, Parts dropped)")
+    all_title_ids: set[str] = set()
+    for subject in cfg.source.subjects:
+        try:
+            titles = client.subject_titles(subject)
+        except Exception as exc:
+            print(f"   {subject!r}: lookup failed ({exc})")
+            continue
+        ids = {str(bhl.pick(t, "title_id") or "") for t in titles}
+        ids.discard("")
+        all_title_ids |= ids
+        print(f"   {subject!r}: {len(ids)} titles")
+    print(f"   union across subjects: {len(all_title_ids)} distinct titles")
+    print(f"   (config reaches at most {titles_per_subject} per subject)")
+
+    print("\n== Walking candidates")
+    candidates = bhl.iter_candidates(
+        client,
+        subjects=cfg.source.subjects,
+        page_types=cfg.source.page_types,
+        year_min=cfg.source.year_min,
+        year_max=cfg.source.year_max,
+        titles_per_subject=titles_per_subject,
+        max_items_per_title=cfg.source.max_items_per_title,
+        max_pages_per_item=cfg.source.max_pages_per_item,
+        limit=args.limit,
+    )
+
+    seen = 0
+    licensed: list[bhl.PageCandidate] = []
+    titles_seen: set[str] = set()
+    titles_licensed: set[str] = set()
+    for cand in candidates:
+        seen += 1
+        if cand.title_id:
+            titles_seen.add(cand.title_id)
+        if licensing.evaluate(cand, cfg.license).allowed:
+            licensed.append(cand)
+            if cand.title_id:
+                titles_licensed.add(cand.title_id)
+        if seen % 100 == 0:
+            print(f"   {seen} candidates, {len(titles_seen)} titles so far...")
+
+    print(f"   {seen} candidates across {len(titles_seen)} titles")
+    print(f"   {len(licensed)} licence-passed across {len(titles_licensed)} titles")
+
+    # Sample the image gates. Spread the sample across the walk rather than
+    # taking the first N, so it is not dominated by one title.
+    sample_size = min(args.sample, len(licensed))
+    step = max(1, len(licensed) // sample_size) if sample_size else 1
+    sample = licensed[::step][:sample_size]
+
+    print(f"\n== Image gates, sampled on {len(sample)} of {len(licensed)} plates")
+    passed = 0
+    reasons: dict[str, int] = {}
+    titles_passing: set[str] = set()
+    for cand in sample:
+        try:
+            img = imaging.load_image(bhl.download_page_image(cand, session=session))
+            imaging.check_source_resolution(
+                img, cfg.image.min_source_width, cfg.image.min_source_height
+            )
+            imaging.check_aspect(img, cfg.image.max_source_aspect)
+            imaging.check_border_tone(img, cfg.image.min_border_luminance)
+            imaging.check_ink_coverage(img, cfg.image.min_ink_coverage)
+        except Exception as exc:
+            key = str(exc).split(":")[0][:48]
+            reasons[key] = reasons.get(key, 0) + 1
+            continue
+        passed += 1
+        if cand.title_id:
+            titles_passing.add(cand.title_id)
+
+    rate = passed / len(sample) if sample else 0.0
+    print(f"   {passed}/{len(sample)} passed ({rate:.0%})")
+    for reason, n in sorted(reasons.items(), key=lambda kv: -kv[1]):
+        print(f"   {n:4}  {reason}")
+
+    print("\n== Implied pool")
+    est_plates = int(len(licensed) * rate)
+    print(f"   licence-passed plates walked : {len(licensed)}")
+    print(f"   estimated past image gates   : ~{est_plates} (sampled rate, before vision)")
+    print(f"   distinct titles, licence-ok  : {len(titles_licensed)}")
+    print(f"   distinct titles in sample    : {len(titles_passing)} of {len(sample)} sampled")
+    print()
+    print("   A title-level cooldown of N videos needs N distinct usable titles.")
+    for weeks, label in ((13, "3 months"), (26, "6 months")):
+        need = weeks * 5
+        verdict = "reachable" if len(titles_licensed) >= need else "NOT reachable"
+        print(f"   {label:>9} at 5/week = {need:3} videos -> {verdict}")
+    return 0
+
+
 def cmd_page_info(args: argparse.Namespace) -> int:
     """Resolve page ids to their volume and parent work.
 
@@ -348,6 +462,12 @@ def main(argv: list[str] | None = None) -> int:
         "--video-id", help="also report which channel this video landed on and its state"
     )
     p_check.set_defaults(func=cmd_check_youtube)
+
+    p_pool = sub.add_parser("pool-survey", help="measure how deep the usable plate pool is")
+    p_pool.add_argument("--limit", type=int, default=1500, help="candidates to walk")
+    p_pool.add_argument("--sample", type=int, default=60, help="plates to fetch for image gates")
+    p_pool.add_argument("--titles", type=int, help="override source.titles_per_subject")
+    p_pool.set_defaults(func=cmd_pool_survey)
 
     p_page = sub.add_parser("page-info", help="resolve page ids to their volume and work")
     p_page.add_argument("page_ids", nargs="+", help="BHL page ids to look up")
