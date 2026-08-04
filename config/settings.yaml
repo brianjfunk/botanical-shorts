@@ -81,6 +81,16 @@ image:
   # occupy a thin band mid-frame, and cropping to fill would risk clipping the
   # plate's engraved caption. Most bound plates are portrait.
   max_source_aspect: 1.25
+  # Both learned from building the channel art, where the same faults were
+  # obvious the moment a dozen plates sat side by side.
+  #
+  # A scan whose own edge is dark -- a black scan frame, a dark mount, a
+  # photograph shot against cloth -- makes sampled_paper fall back to
+  # parchment, leaving a hard rectangle on a parchment field.
+  min_border_luminance: 140
+  # A faint pencil study is a clean scan, so scan_quality rates it highly, and
+  # it still frames as an empty page.
+  min_ink_coverage: 0.05
 
 video:
   # Short by design: on a truly static frame the loop point is invisible, so a

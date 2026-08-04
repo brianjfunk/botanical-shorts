@@ -53,45 +53,21 @@ class Plate:
         return self.candidate.citation()
 
 
-# Below this mean border luminance, the scan's own edge is dark -- a black
-# scan frame, a dark mount board, or a photograph shot against cloth. Such a
-# plate cannot be made to sit on a sheet of paper: whatever tone fills the
-# margins, the plate reads as a rectangle pasted on top. The video pipeline
-# never had to care, because there the plate fills the frame.
+# Both checks now live in `imaging`, because the same two faults spoil a video
+# frame as readily as a collage tile -- they were simply easier to see here,
+# with a dozen plates side by side. Re-exported so this module still reads as
+# the place the rules were worked out.
 MIN_BORDER_LUMINANCE = 140
+MIN_INK_COVERAGE = 0.05
+ink_coverage = imaging.ink_coverage
 
 
 def blends_with_paper(img: Image.Image) -> tuple[bool, str]:
     """Whether this scan can sit on a paper field without looking pasted on."""
-    w, h = img.size
-    bw, bh = max(1, int(w * 0.04)), max(1, int(h * 0.04))
-    strips = [
-        img.crop((0, 0, w, bh)),
-        img.crop((0, h - bh, w, h)),
-        img.crop((0, 0, bw, h)),
-        img.crop((w - bw, 0, w, h)),
-    ]
-    # The darkest edge decides: one black scan frame is enough to spoil it,
-    # even if the other three edges are clean paper.
-    darkest = min(sum(ImageStat.Stat(s).median[:3]) / 3 for s in strips)
+    darkest = imaging.border_luminance(img)
     if darkest < MIN_BORDER_LUMINANCE:
         return False, f"dark border (luminance {darkest:.0f} < {MIN_BORDER_LUMINANCE})"
     return True, "blends"
-
-
-# A plate carrying less ink than this over its surface is a faint pencil study
-# or a barely-inked outline. At full height in a video it is a delicate
-# drawing; shrunk into a collage tile it is an empty white rectangle. Measured
-# as the fraction of the plate at least MIN_INK_DEPTH below its own paper tone.
-MIN_INK_COVERAGE = 0.05
-MIN_INK_DEPTH = 40
-
-
-def ink_coverage(img: Image.Image) -> float:
-    """Fraction of the plate carrying meaningful ink, against its own paper."""
-    cells, gw, gh, _ = _ink_grid(img)
-    inked = sum(1 for row in cells for v in row if v >= MIN_INK_DEPTH)
-    return inked / max(1, gw * gh)
 
 
 ART_PROMPT = """You are choosing plates for the channel art of a YouTube channel \
@@ -308,27 +284,6 @@ def average_paper_color(plates: Sequence[Plate]) -> tuple[int, int, int]:
 # --------------------------------------------------------------------------
 
 
-def _ink_grid(img: Image.Image, grid: int = 160) -> tuple[list[list[float]], int, int, float]:
-    """Downscale to a coarse map of how much *ink* each cell holds.
-
-    Ink is measured against the plate's own paper tone rather than against
-    white: an 1820s scan can have a paper baseline down in the 180s, and
-    measuring darkness absolutely would score the blank margin of a browned
-    plate the same as light engraving on a clean one.
-    """
-    paper = imaging.sample_paper_color(img)
-    paper_lum = sum(paper) / 3
-
-    w, h = img.size
-    scale = grid / max(w, h)
-    gw, gh = max(1, round(w * scale)), max(1, round(h * scale))
-    small = img.convert("L").resize((gw, gh), Image.BILINEAR)
-    px = small.load()
-
-    cells = [[max(0.0, paper_lum - px[x, y]) for x in range(gw)] for y in range(gh)]
-    return cells, gw, gh, w / gw
-
-
 def _integral(cells: list[list[float]], gw: int, gh: int) -> list[list[float]]:
     """Summed-area table, so any window's ink total is four lookups."""
     table = [[0.0] * (gw + 1) for _ in range(gh + 1)]
@@ -362,7 +317,7 @@ def densest_square(
     the mask. Weighting the middle picks windows whose subject is *in* the
     visible disc.
     """
-    cells, gw, gh, cell_px = _ink_grid(img)
+    cells, gw, gh, cell_px = imaging._ink_grid(img)
     table = _integral(cells, gw, gh)
 
     short_px = min(img.width, img.height)

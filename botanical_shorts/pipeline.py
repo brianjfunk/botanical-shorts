@@ -104,6 +104,9 @@ def select_and_build(
                 img, cfg.image.min_source_width, cfg.image.min_source_height
             )
             imaging.check_aspect(img, cfg.image.max_source_aspect)
+            # Cheap and local, so both run before spending a vision call.
+            imaging.check_border_tone(img, cfg.image.min_border_luminance)
+            imaging.check_ink_coverage(img, cfg.image.min_ink_coverage)
         except (bhl.BHLError, imaging.ImageError, requests.RequestException) as exc:
             rejections.append(Rejection(page_id, "download", str(exc)))
             continue

@@ -65,8 +65,12 @@ PLANT OR ORGANISM depicted -- a botanical binomial or a common name. This is \
 narrower than caption_embedded: a plate number ("1217") or an imprint line \
 ("Pub. by J. Ridgway") is lettering but is NOT a name. Answer false when the only \
 lettering is a number, an imprint, or an engraver credit.
-- is_illustration (boolean): is this page primarily a pictorial plate, rather \
-than a page of body text, a title page, an index, or a blank?
+- is_illustration (boolean): is this page primarily a finished pictorial plate? \
+Answer false for a page of body text, a title page, an index or a blank; for a \
+rough sketchbook or notebook page carrying pencil studies and handwritten \
+annotations; and for any capture that includes scanning furniture -- a ruler or \
+measuring scale, a colour calibration bar or greyscale target, or a library stamp \
+laid beside the page.
 - subject_summary (string, max 8 words): the subject itself as a short noun \
 phrase. Name it directly -- do NOT begin with "Botanical illustration of", "An \
 illustration of", "A drawing of" or similar. If a name is legible on the plate, \

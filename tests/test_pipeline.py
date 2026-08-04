@@ -922,3 +922,57 @@ def test_title_offset_rotates_the_window(tmp_path):
         hist.record({"page_id": f"x{i}", "item_id": f"x{i}"})
     later = next(iter(_walk(PoolClient(), hist, titles_per_subject=5)))
     assert later.title_id != first_at_zero.title_id, "window did not rotate"
+
+
+# -- image gates ported from the channel-art build ---------------------------
+
+def _paper(w=1200, h=1500, tone=(232, 222, 201)):
+    return Image.new("RGB", (w, h), tone)
+
+
+def test_shipped_config_carries_the_ported_gates():
+    cfg = load_config()
+    assert cfg.image.min_border_luminance == 140
+    assert cfg.image.min_ink_coverage == 0.05
+
+
+def test_black_framed_scan_is_rejected_before_framing():
+    """sampled_paper would read the frame as scanner void and fall back to
+    parchment, leaving a hard dark rectangle on a parchment field."""
+    img = _paper()
+    img.paste(Image.new("RGB", (1200, 100), (4, 4, 4)), (0, 0))
+    with pytest.raises(imaging.ImageError, match="dark frame or mount"):
+        imaging.check_border_tone(img, 140)
+
+
+def test_plate_on_clean_paper_passes_the_border_check():
+    imaging.check_border_tone(_paper(), 140)
+
+
+def test_faint_pencil_study_is_rejected_though_the_scan_is_clean():
+    """Exactly what scan_quality cannot catch: the scan is fine, the plate is
+    almost empty."""
+    from PIL import ImageDraw
+
+    img = _paper(tone=(250, 250, 248))
+    draw = ImageDraw.Draw(img)
+    for y in range(600, 660, 12):
+        draw.line([(500, y), (700, y)], fill=(205, 205, 203), width=1)
+    with pytest.raises(imaging.ImageError, match="would read as blank"):
+        imaging.check_ink_coverage(img, 0.05)
+
+
+def test_properly_engraved_plate_clears_the_ink_floor():
+    from PIL import ImageDraw
+
+    img = _paper()
+    draw = ImageDraw.Draw(img)
+    for y in range(300, 1200, 4):
+        draw.line([(200, y), (1000, y)], fill=(30, 25, 20), width=2)
+    imaging.check_ink_coverage(img, 0.05)
+
+
+def test_ink_is_measured_against_the_plates_own_paper_not_white():
+    """A browned scan must not have its blank margin scored as ink."""
+    browned = _paper(tone=(176, 158, 126))
+    assert imaging.ink_coverage(browned) < 0.01

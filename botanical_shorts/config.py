@@ -82,6 +82,14 @@ class ImageConfig:
     min_source_height: int
     # Plates wider than this (width/height) are skipped as unframeable.
     max_source_aspect: float
+    # Minimum mean luminance of the scan's darkest edge strip. Below this the
+    # scan has a black frame or dark mount, sampled_paper falls back to
+    # parchment, and the plate reads as a dark rectangle pasted on a sheet.
+    min_border_luminance: float = 140.0
+    # Minimum fraction of the plate carrying ink, measured against its own
+    # paper tone. Catches faint pencil studies, which score well on scan
+    # quality -- the scan is fine -- and still frame as an empty page.
+    min_ink_coverage: float = 0.05
 
 
 @dataclass(frozen=True)
