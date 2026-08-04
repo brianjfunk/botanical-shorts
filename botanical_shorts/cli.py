@@ -206,6 +206,50 @@ def cmd_check_youtube(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_page_info(args: argparse.Namespace) -> int:
+    """Resolve page ids to their volume and parent work.
+
+    History records page and item ids, which is all the dedupe rules need but
+    not enough to answer "did these two come from the same book?" -- the
+    question that decides whether a title-level rule would catch a repeat.
+    Walks page -> item -> title for each id and prints them side by side.
+    """
+    cfg = load_config(args.config)
+    del cfg  # only needed to surface a config error early
+    client = bhl.BHLClient(require_env("BHL_API_KEY"))
+
+    rows = []
+    for page_id in args.page_ids:
+        page = client.get_page_metadata(page_id)
+        item_id = str(bhl.pick(page, "item_id") or "")
+        item = client.get_item_metadata(item_id, pages=False) if item_id else {}
+        title_id = str(bhl.pick(item, "title_id") or "")
+        title = client.get_title_metadata(title_id, items=False) if title_id else {}
+        rows.append(
+            {
+                "page_id": page_id,
+                "item_id": item_id,
+                "title_id": title_id,
+                "title": str(bhl.pick(title, "full_title") or "?"),
+                "year": str(bhl.pick(title, "year") or "?"),
+            }
+        )
+        print(f"page {page_id}")
+        print(f"   item_id  = {rows[-1]['item_id']}")
+        print(f"   title_id = {rows[-1]['title_id']}")
+        print(f"   title    = {rows[-1]['title'][:90]}")
+        print(f"   year     = {rows[-1]['year']}")
+
+    title_ids = [r["title_id"] for r in rows if r["title_id"]]
+    if len(rows) > 1:
+        print()
+        if len(set(title_ids)) == 1 and title_ids:
+            print(f"SAME TITLE ({title_ids[0]}): a title-level rule would relate these.")
+        else:
+            print("DIFFERENT TITLES: a title-level rule would NOT relate these.")
+    return 0
+
+
 def cmd_channel_art(args: argparse.Namespace) -> int:
     """Build the channel banner and profile picture from real plates.
 
@@ -304,6 +348,10 @@ def main(argv: list[str] | None = None) -> int:
         "--video-id", help="also report which channel this video landed on and its state"
     )
     p_check.set_defaults(func=cmd_check_youtube)
+
+    p_page = sub.add_parser("page-info", help="resolve page ids to their volume and work")
+    p_page.add_argument("page_ids", nargs="+", help="BHL page ids to look up")
+    p_page.set_defaults(func=cmd_page_info)
 
     p_art = sub.add_parser("channel-art", help="build the channel banner and profile picture")
     p_art.add_argument(
