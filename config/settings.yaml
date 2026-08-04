@@ -34,9 +34,16 @@ source:
   year_min: 1700
   year_max: 1920
 
-  # 'Botanical illustration' alone returns 152 title-level works; the old
-  # window of 12 was a small fraction of the available pool.
-  titles_per_subject: 60
+  # How many titles per subject the walk may consider. This is the real limit
+  # on pool depth: 'botany' offers 5988 titles, but at 60 the walk only ever
+  # saw 120 of them, which is why raising the subject count alone changed
+  # nothing measurable.
+  #
+  # Raising it is close to free. The walk is lazy and stops at the first
+  # publishable plate, and a title on cooldown is skipped before its metadata
+  # call -- so a bigger window costs API calls only when the leading titles
+  # yield nothing.
+  titles_per_subject: 400
   max_items_per_title: 3
   # Cap per volume so one heavily-illustrated book cannot dominate the pool.
   max_pages_per_item: 6
