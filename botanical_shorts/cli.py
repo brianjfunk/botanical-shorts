@@ -59,7 +59,37 @@ def cmd_verify_bhl(args: argparse.Namespace) -> int:
     client = bhl.BHLClient(require_env("BHL_API_KEY"))
     subject = args.subject or cfg.source.subjects[0]
 
-    print(f"== GetSubjectMetadata(subject={subject!r}, pubs=t)")
+    # Every configured subject, not just the probed one. Two headings sat in
+    # config returning zero title-level publications and nothing failed,
+    # because BHL answers an unknown subject exactly as it answers a real but
+    # thin one: HTTP 200 and an empty list. Field-name checks could never have
+    # caught that, which is why this is its own gate.
+    print("== Configured subjects")
+    empty_subjects: list[str] = []
+    for name in cfg.source.subjects:
+        try:
+            count = len(client.subject_titles(name))
+        except Exception as exc:
+            print(f"   [err ] {name!r}: {exc}")
+            empty_subjects.append(name)
+            continue
+        if count:
+            print(f"   [ok  ] {count:5} titles  {name!r}")
+        else:
+            print(f"   [DEAD]     0 titles  {name!r}")
+            empty_subjects.append(name)
+
+    if empty_subjects:
+        print(
+            f"\n   {len(empty_subjects)} subject(s) return nothing: "
+            f"{', '.join(repr(s) for s in empty_subjects)}."
+            "\n   These contribute no plates at all. Find real headings with:"
+            "\n     python -m botanical_shorts.cli find-subjects <term>",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"\n== GetSubjectMetadata(subject={subject!r}, pubs=t)")
     subject_meta = client.get_subject_metadata(subject, pubs=True)
     if not subject_meta:
         print(f"   subject {subject!r} not found in BHL", file=sys.stderr)

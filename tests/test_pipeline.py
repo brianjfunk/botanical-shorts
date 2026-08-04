@@ -1114,10 +1114,48 @@ def test_walk_skips_a_cooling_title_without_spending_the_budget():
 def test_configured_subjects_exclude_the_dead_headings():
     """'Botany, Pictorial works' and 'Plants Pictorial works' returned zero
     title-level publications against the live API, so the channel ran on one
-    subject for weeks without anything failing. A non-existent heading is
+    subject without anything failing. A non-existent heading is
     indistinguishable from a thin one, so the only defence is not shipping
-    headings that were never verified."""
+    headings that were never verified -- see the subject check in verify-bhl,
+    which now fails loudly on an empty one."""
     subjects = load_config().source.subjects
     assert "Botany, Pictorial works" not in subjects
     assert "Plants Pictorial works" not in subjects
     assert "botany" in subjects
+
+
+def test_verify_bhl_reports_a_dead_subject(capsys):
+    """The check that would have caught the two dead headings.
+
+    BHL answers an unknown subject the same way it answers a sparse one, so
+    this has to assert on the *count*, not on the call succeeding.
+    """
+    import argparse
+
+    # cli imports the pipeline, which imports youtube and so google-auth.
+    # Skip rather than fail where the runtime deps are not installed.
+    pytest.importorskip("google.auth")
+    from botanical_shorts import cli
+
+    class Client:
+        def __init__(self, *a, **k):
+            pass
+
+        def subject_titles(self, subject):
+            return [{"TitleID": "1"}] if subject == "botany" else []
+
+    real_client, real_cfg = bhl.BHLClient, cli.load_config
+    cfg = load_config()
+    object.__setattr__(cfg.source, "subjects", ["botany", "made up heading"])
+    bhl.BHLClient = Client
+    cli.load_config = lambda *_a, **_k: cfg
+    os.environ.setdefault("BHL_API_KEY", "test")
+    try:
+        rc = cli.cmd_verify_bhl(argparse.Namespace(config=None, subject=None))
+    finally:
+        bhl.BHLClient, cli.load_config = real_client, real_cfg
+
+    out = capsys.readouterr()
+    assert rc == 1
+    assert "DEAD" in out.out
+    assert "made up heading" in out.err
