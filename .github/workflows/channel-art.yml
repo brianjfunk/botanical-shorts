@@ -53,9 +53,14 @@ jobs:
       - name: Build banner and avatar
         env:
           BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           if [ -z "$BHL_API_KEY" ]; then
             echo "::error::BHL_API_KEY is not set; cannot source plates."
+            exit 1
+          fi
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::ANTHROPIC_API_KEY is not set; the suitability check needs it."
             exit 1
           fi
           python -m botanical_shorts.cli -v channel-art \

@@ -53,31 +53,141 @@ class Plate:
         return self.candidate.citation()
 
 
+# Below this mean border luminance, the scan's own edge is dark -- a black
+# scan frame, a dark mount board, or a photograph shot against cloth. Such a
+# plate cannot be made to sit on a sheet of paper: whatever tone fills the
+# margins, the plate reads as a rectangle pasted on top. The video pipeline
+# never had to care, because there the plate fills the frame.
+MIN_BORDER_LUMINANCE = 140
+
+
+def blends_with_paper(img: Image.Image) -> tuple[bool, str]:
+    """Whether this scan can sit on a paper field without looking pasted on."""
+    w, h = img.size
+    bw, bh = max(1, int(w * 0.04)), max(1, int(h * 0.04))
+    strips = [
+        img.crop((0, 0, w, bh)),
+        img.crop((0, h - bh, w, h)),
+        img.crop((0, 0, bw, h)),
+        img.crop((w - bw, 0, w, h)),
+    ]
+    # The darkest edge decides: one black scan frame is enough to spoil it,
+    # even if the other three edges are clean paper.
+    darkest = min(sum(ImageStat.Stat(s).median[:3]) / 3 for s in strips)
+    if darkest < MIN_BORDER_LUMINANCE:
+        return False, f"dark border (luminance {darkest:.0f} < {MIN_BORDER_LUMINANCE})"
+    return True, "blends"
+
+
+ART_PROMPT = """You are choosing plates for the channel art of a YouTube channel \
+that posts historical botanical illustrations. This is a scanned page from a \
+natural history book.
+
+Answer whether this page is suitable as one tile in a collage of botanical plates.
+
+Suitable: a drawn, engraved or lithographed illustration whose subject is a PLANT \
+-- flowers, foliage, fruit, seeds, roots, fungi, or a botanical dissection.
+
+NOT suitable, answer false for any of these:
+- a title page, index, contents page, dedication, or any page that is mostly text
+- a photograph rather than a drawing, engraving or lithograph
+- a fanciful or allegorical scene: human or animal figures, fairies, costumed \
+characters, personified flowers, landscapes with people
+- a map, diagram, portrait, or an illustration of an animal rather than a plant
+- a plate so faint, damaged, stained or skewed that it would look poor at small size
+
+Respond with ONLY a JSON object: {"suitable": true/false, "reason": "<8 words>"}"""
+
+
+def _art_client():
+    from anthropic import Anthropic
+
+    return Anthropic(api_key=require_env("ANTHROPIC_API_KEY"))
+
+
+def suitable_for_art(client, img: Image.Image, *, model: str) -> tuple[bool, str]:
+    """Ask Claude whether this plate belongs in the collage.
+
+    A separate question from the video pipeline's, and deliberately stricter.
+    An episode shows one plate at full height, where a title page or a
+    figurative print would simply be the wrong video; here a dozen plates sit
+    side by side, and a page of letterpress among them does not read as an odd
+    choice, it reads as a bug.
+    """
+    import json
+
+    from .vision import _encode, _parse
+
+    encoded, media_type = _encode(img)
+    try:
+        message = client.messages.create(
+            model=model,
+            max_tokens=200,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": encoded,
+                            },
+                        },
+                        {"type": "text", "text": ART_PROMPT},
+                    ],
+                }
+            ],
+        )
+        raw = "".join(b.text for b in message.content if b.type == "text")
+        data = _parse(raw)
+    except Exception as exc:
+        if getattr(exc, "status_code", None) in (401, 403):
+            from .vision import VisionAuthError
+
+            raise VisionAuthError(
+                "Anthropic rejected the API key; no amount of retrying will help."
+            ) from exc
+        log.warning("art suitability check failed: %s", exc)
+        # Fail closed: an unchecked plate is not worth the risk of a title
+        # page on the channel banner.
+        return False, f"check errored: {exc}"
+
+    del json
+    return bool(data.get("suitable")), str(data.get("reason") or "").strip()
+
+
 def collect_plates(
     cfg: Config,
     *,
     count: int,
     session=None,
+    vision_client=None,
     max_aspect: float = 1.6,
 ) -> list[Plate]:
-    """Walk BHL for ``count`` distinct licence-passed plates.
+    """Walk BHL for ``count`` distinct licence-passed plates fit for a collage.
 
     Deliberately does *not* consult the published history: channel art is not
     an episode, and reusing a plate here neither burns it nor repeats it in the
-    feed. It also skips the vision call -- these get looked at by a human
-    before they go anywhere near the channel, which is a stronger gate than
-    scan_quality, and a banner needs a dozen plates where an episode needs one.
+    feed.
 
-    ``max_aspect`` is looser than the video pipeline's, because a row of
-    varied plate shapes is the point here rather than a defect.
+    ``max_aspect`` is looser than the video pipeline's, because a row of varied
+    plate shapes is the point here rather than a defect.
     """
     import requests
 
     session = session or requests.Session()
     client = bhl.BHLClient(require_env("BHL_API_KEY"), session=session)
+    if cfg.vision.enabled and vision_client is None:
+        vision_client = _art_client()
 
     plates: list[Plate] = []
     seen_items: set[str] = set()
+    # Channel art is built rarely, so this is generous -- but unbounded vision
+    # calls against a pool of 400 candidates is not a bill worth risking for a
+    # banner.
+    checks_left = count * 4
 
     candidates = bhl.iter_candidates(
         client,
@@ -94,8 +204,8 @@ def collect_plates(
     for candidate in candidates:
         if len(plates) >= count:
             break
-        # One plate per volume: a row of six plates from the same book looks
-        # like a mistake rather than a collection.
+        # One plate per volume: six plates from the same book looks like a
+        # mistake rather than a collection.
         if candidate.item_id in seen_items:
             continue
 
@@ -115,12 +225,28 @@ def collect_plates(
             log.debug("page %s unusable: %s", candidate.page_id, exc)
             continue
 
+        # Cheap and local, so it runs before spending a vision call.
+        blends, why = blends_with_paper(img)
+        if not blends:
+            log.debug("page %s rejected: %s", candidate.page_id, why)
+            continue
+
+        if vision_client is not None:
+            if checks_left <= 0:
+                log.warning("suitability budget exhausted after %d plates", len(plates))
+                break
+            checks_left -= 1
+            ok, reason = suitable_for_art(vision_client, img, model=cfg.vision.model)
+            if not ok:
+                log.info("page %s not collage material: %s", candidate.page_id, reason)
+                continue
+
         seen_items.add(candidate.item_id)
         plates.append(Plate(image=img, candidate=candidate))
         log.info("plate %d/%d: page %s (%s)", len(plates), count, candidate.page_id, verdict.reason)
 
     if not plates:
-        raise RuntimeError("no licence-passed plates found; nothing to build channel art from")
+        raise RuntimeError("no suitable plates found; nothing to build channel art from")
     return plates
 
 
@@ -331,84 +457,129 @@ def _fade_edges(canvas: Image.Image, fill: tuple[int, int, int], span: int) -> I
     return Image.alpha_composite(canvas.convert("RGBA"), veil).convert("RGB")
 
 
+def _scale_to_height(images: Sequence[Image.Image], height: int) -> list[Image.Image]:
+    out = []
+    for img in images:
+        w = max(1, int(round(img.width * height / img.height)))
+        out.append(img.resize((w, height), Image.LANCZOS))
+    return out
+
+
+def _lay_row(
+    canvas: Image.Image,
+    scaled: Sequence[Image.Image],
+    *,
+    y: int,
+    gap: int,
+    start_index: int = 0,
+    x_offset: int = 0,
+    border_px: int = 0,
+    border_color: str = "#00000026",
+) -> int:
+    """Paste a left-to-right row that overruns both canvas edges.
+
+    Returns how many plates landed fully inside the horizontal safe area.
+    """
+    width = canvas.width
+    safe_x0, safe_x1 = (width - SAFE_AREA[0]) // 2, (width + SAFE_AREA[0]) // 2
+
+    # Start far enough left that the row is already mid-plate at x=0.
+    x = x_offset - max(img.width for img in scaled)
+    i, in_safe = start_index, 0
+    draw = ImageDraw.Draw(canvas)
+
+    while x < width:
+        img = scaled[i % len(scaled)]
+        canvas.paste(img, (x, y))
+        if x >= safe_x0 and x + img.width <= safe_x1:
+            in_safe += 1
+        if border_px > 0:
+            draw.rectangle(
+                [x, y, x + img.width - 1, y + img.height - 1],
+                outline=ImageColor.getrgb(border_color),
+                width=border_px,
+            )
+        x += img.width + gap
+        i += 1
+    return in_safe
+
+
 def build_banner(
     plates: Sequence[Plate],
     *,
     size: tuple[int, int] = BANNER_SIZE,
     safe_area: tuple[int, int] = SAFE_AREA,
-    margin_ratio: float = 0.08,
+    margin_ratio: float = 0.07,
     gap_ratio: float = 0.035,
     border_px: int = 0,
     border_color: str = "#00000026",
+    veil_alpha: int = 168,
     fill: tuple[int, int, int] | None = None,
 ) -> Image.Image:
-    """Tile plates into a banner, keeping every plate inside the safe band.
+    """A full-bleed collage with a crisp hero row across the safe band.
 
-    Plate height is set by the *safe area*, not the canvas: 423px is the only
-    vertical space guaranteed to survive YouTube's cropping, so a plate taller
-    than that would be decapitated on a phone. The row then extends past the
-    canvas horizontally, which is free -- horizontal overflow is cropped
-    towards the centre, so the plates that survive are the ones already placed
-    centrally.
+    Two layers, because the safe area and the canvas want opposite things.
+
+    The **hero row** is sized to the safe area: 423px is the only vertical
+    space guaranteed to survive YouTube's cropping, so anything meant to be
+    seen must fit inside it. That alone would leave three quarters of the
+    2560x1440 canvas as bare paper -- fine on a phone, a thin strip adrift in
+    an empty sheet on desktop and TV.
+
+    So beneath it sits a **background field** of larger plates tiled over the
+    whole canvas and veiled back towards the paper tone. It fills the frame at
+    every crop, reads as a wall of specimen sheets rather than as competing
+    subject matter, and stays quiet enough for YouTube's own channel name and
+    avatar, which are drawn over the middle of this image.
     """
     width, height = size
     safe_w, safe_h = safe_area
     fill = fill or average_paper_color(plates)
+    sources = [p.image for p in plates]
 
     canvas = Image.new("RGB", (width, height), fill)
 
+    # --- background field ---------------------------------------------------
+    bg_h = int(height * 0.42)
+    bg_gap = int(bg_h * 0.05)
+    bg = _scale_to_height(sources, bg_h)
+    row_index = 0
+    y = -bg_h // 3
+    while y < height:
+        # Stagger each row and start on a different plate, so the tiling does
+        # not line up into visible columns.
+        _lay_row(
+            canvas,
+            bg,
+            y=y,
+            gap=bg_gap,
+            start_index=row_index * 3 + 1,
+            x_offset=int(bg_h * 0.37 * row_index),
+        )
+        y += bg_h + bg_gap
+        row_index += 1
+
+    veil = Image.new("RGBA", (width, height), fill + (veil_alpha,))
+    canvas = Image.alpha_composite(canvas.convert("RGBA"), veil).convert("RGB")
+
+    # --- hero row -----------------------------------------------------------
     plate_h = max(1, int(safe_h * (1 - 2 * margin_ratio)))
     gap = int(safe_h * gap_ratio)
-    centre_y = height // 2
-
-    # Scale every plate to a common height so the row reads as one shelf;
-    # widths vary with each plate's own proportions, which is the variety.
-    scaled: list[Image.Image] = []
-    for plate in plates:
-        img = plate.image
-        scale = plate_h / img.height
-        w = max(1, int(round(img.width * scale)))
-        scaled.append(img.resize((w, plate_h), Image.LANCZOS))
-
-    # Repeat the set until the row overruns the canvas, so the TV crop is full
-    # edge to edge. With enough distinct plates this never actually repeats
-    # inside the visible band.
-    row: list[Image.Image] = []
-    row_w = 0
-    i = 0
-    while row_w < width + 2 * plate_h:
-        img = scaled[i % len(scaled)]
-        row.append(img)
-        row_w += img.width + gap
-        i += 1
-        if i > 200:  # pathological guard; never reached with real plate sizes
-            break
-    row_w -= gap
-
-    x = (width - row_w) // 2
-    placed_in_safe = 0
-    safe_x0, safe_x1 = (width - safe_w) // 2, (width + safe_w) // 2
-
-    for img in row:
-        y = centre_y - plate_h // 2
-        canvas.paste(img, (x, y))
-        if x >= safe_x0 and x + img.width <= safe_x1:
-            placed_in_safe += 1
-        if border_px > 0:
-            overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-            ImageDraw.Draw(overlay).rectangle(
-                [x, y, x + img.width - 1, y + plate_h - 1],
-                outline=ImageColor.getrgb(border_color),
-                width=border_px,
-            )
-            canvas = Image.alpha_composite(canvas.convert("RGBA"), overlay).convert("RGB")
-        x += img.width + gap
+    hero = _scale_to_height(sources, plate_h)
+    in_safe = _lay_row(
+        canvas,
+        hero,
+        y=height // 2 - plate_h // 2,
+        gap=gap,
+        border_px=border_px,
+        border_color=border_color,
+    )
 
     log.info(
-        "banner: %d plates in the row, %d fully inside the %dx%d safe area",
-        len(row), placed_in_safe, safe_w, safe_h,
+        "banner: %d background rows, %d hero plates fully inside the %dx%d safe area",
+        row_index, in_safe, safe_w, safe_h,
     )
-    return _fade_edges(canvas, fill, span=int(width * 0.06))
+    return _fade_edges(canvas, fill, span=int(width * 0.05))
 
 
 def safe_area_preview(banner: Image.Image, safe_area: tuple[int, int] = SAFE_AREA) -> Image.Image:

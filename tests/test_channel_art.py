@@ -8,6 +8,7 @@ crop lands on the drawing rather than on blank paper.
 
 from __future__ import annotations
 
+import pytest
 from PIL import Image, ImageDraw
 
 from botanical_shorts import channel_art
@@ -53,36 +54,55 @@ def test_banner_is_exactly_the_size_youtube_expects():
     assert banner.size == BANNER_SIZE == (2560, 1440)
 
 
-def test_every_plate_stays_inside_the_safe_band_vertically():
-    """The constraint that matters: a phone crops to 1546x423 and nothing else.
+def _contrast(img: Image.Image) -> float:
+    from PIL import ImageStat
 
-    A plate taller than the safe area is not merely tight -- it is beheaded on
-    the most common surface the channel is viewed on.
+    return ImageStat.Stat(img.convert("L")).stddev[0]
+
+
+def test_hero_row_fits_inside_the_safe_band():
+    """The hero row must survive a phone's crop to 1546x423 intact.
+
+    Sized from the safe area, not the canvas: a hero plate taller than 423px
+    is not merely tight, it is beheaded on the most common surface the channel
+    is viewed on.
     """
-    banner = channel_art.build_banner(plates())
+    banner = channel_art.build_banner(plates(), veil_alpha=255)  # hide the field
+    fill = banner.getpixel((5, 5))
     safe_top = (BANNER_SIZE[1] - SAFE_AREA[1]) // 2
     safe_bottom = safe_top + SAFE_AREA[1]
 
-    # Anything not background must fall between safe_top and safe_bottom.
-    fill = banner.getpixel((5, 5))
     for y in (safe_top - 12, safe_bottom + 12, 40, BANNER_SIZE[1] - 40):
         row = [banner.getpixel((x, y)) for x in range(0, BANNER_SIZE[0], 40)]
-        assert all(px == fill for px in row), f"content found outside the safe band at y={y}"
+        assert all(px == fill for px in row), f"hero content outside the safe band at y={y}"
+
+
+def test_background_field_fills_the_whole_canvas():
+    """No bare corner: the TV crop shows all 2560x1440, not just the band."""
+    banner = channel_art.build_banner(plates())
+    # Corners and mid-edges, well away from the hero row.
+    probes = [(300, 120), (2260, 120), (300, 1320), (2260, 1320), (1280, 100)]
+    for x, y in probes:
+        patch = banner.crop((x - 60, y - 60, x + 60, y + 60))
+        assert _contrast(patch) > 1.0, f"canvas is bare at ({x},{y})"
+
+
+def test_the_hero_row_reads_stronger_than_the_field_behind_it():
+    """The veil has to actually recede, or the banner is visual noise."""
+    banner = channel_art.build_banner(plates())
+    mid_y = BANNER_SIZE[1] // 2
+    hero = banner.crop((900, mid_y - 150, 1660, mid_y + 150))
+    field = banner.crop((900, 60, 1660, 360))
+    assert _contrast(hero) > _contrast(field) * 1.3
 
 
 def test_banner_row_spans_the_full_canvas_width():
-    """The TV crop shows all 2560px; an empty end would read as unfinished.
-
-    Scans a region rather than one column: a single x can legitimately land in
-    a plate's own blank margin, which says nothing about whether the row
-    reaches that far.
-    """
-    banner = channel_art.build_banner(plates())
+    """An empty end of the hero row would read as unfinished on desktop."""
+    banner = channel_art.build_banner(plates(), veil_alpha=255)
     mid_y = BANNER_SIZE[1] // 2
     fill = banner.getpixel((5, 5))
-    fade = int(BANNER_SIZE[0] * 0.06)
+    fade = int(BANNER_SIZE[0] * 0.05)
 
-    # Just inside the fade, at both ends.
     regions = {
         "left": range(fade + 10, fade + 250, 5),
         "right": range(BANNER_SIZE[0] - fade - 250, BANNER_SIZE[0] - fade - 10, 5),
@@ -93,7 +113,7 @@ def test_banner_row_spans_the_full_canvas_width():
             for x in xs
             for y in range(mid_y - 120, mid_y + 120, 8)
         )
-        assert found, f"no plate content in the {name} end of the row"
+        assert found, f"no plate content in the {name} end of the hero row"
 
 
 def test_safe_area_preview_matches_youtubes_crop():
@@ -168,6 +188,35 @@ def test_circular_preview_clears_the_corners():
     assert preview.mode == "RGBA"
     assert preview.getpixel((2, 2))[3] == 0          # corner masked away
     assert preview.getpixel((400, 400))[3] == 255    # centre kept
+
+
+# -- plate suitability ------------------------------------------------------
+
+def test_plate_on_paper_is_accepted():
+    ok, _ = channel_art.blends_with_paper(plate(1200, 1500, ink_box=(300, 400, 900, 1100)).image)
+    assert ok
+
+
+@pytest.mark.parametrize("border", [(0, 0, 0), (60, 40, 25)])
+def test_dark_bordered_scan_is_rejected(border):
+    """A black scan frame or dark mount can never sit on a paper sheet.
+
+    This is what let a photograph shot against brown cloth, and two scans with
+    heavy black frames, into the first banner: whatever tone fills the margins,
+    they read as rectangles pasted on top rather than as sheets on a desk.
+    """
+    img = Image.new("RGB", (1200, 1500), border)
+    img.paste(Image.new("RGB", (1000, 1300), (232, 222, 201)), (100, 100))
+    ok, reason = channel_art.blends_with_paper(img)
+    assert not ok and "dark border" in reason
+
+
+def test_one_dark_edge_is_enough_to_reject():
+    """Three clean edges do not rescue a plate guillotined by a black bar."""
+    img = Image.new("RGB", (1200, 1500), (232, 222, 201))
+    img.paste(Image.new("RGB", (1200, 90), (5, 5, 5)), (0, 0))
+    ok, _ = channel_art.blends_with_paper(img)
+    assert not ok
 
 
 # -- attribution ------------------------------------------------------------
