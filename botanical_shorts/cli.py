@@ -224,11 +224,15 @@ def cmd_find_subjects(args: argparse.Namespace) -> int:
     # what a wrong op or wrong parameter name looks like, since a genuinely
     # empty search would still be odd for so broad a word. Try the plausible
     # spellings and report which one actually answers.
+    # Confirmed against the live API: the parameter is `subject`, not
+    # `searchterm`. With `searchterm` the call succeeds and returns an empty
+    # Result -- indistinguishable from a search that genuinely found nothing,
+    # which is why two dead subjects sat in config unnoticed. The other
+    # spellings are kept as fallbacks in case the API changes.
     ops = [
-        ("SubjectSearch", "searchterm"),
         ("SubjectSearch", "subject"),
+        ("SubjectSearch", "searchterm"),
         ("GetSubjects", None),
-        ("SubjectList", None),
     ]
 
     def _probe(term: str) -> list[str]:

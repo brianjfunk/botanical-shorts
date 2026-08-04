@@ -10,10 +10,18 @@ source:
   #   - "Zoological illustration"
   #   - "Entomology"
   #   - "Birds"
+  # Confirmed live via `find-subjects`. "Botany, Pictorial works" and "Plants
+  # Pictorial works" were removed: both returned ZERO title-level publications,
+  # so the channel had been running on one subject the whole time. Nothing
+  # failed loudly, because a heading that does not exist looks exactly like one
+  # that is merely thin -- check any new subject with `find-subjects` first.
+  #
+  # Title counts as measured:
+  #   botany                 5990
+  #   Botanical illustration  152
   subjects:
     - "Botanical illustration"
-    - "Botany, Pictorial works"
-    - "Plants Pictorial works"
+    - "botany"
 
   # BHL flags page types per scanned page. "Illustration" is the plate marker;
   # run `verify-bhl` to confirm the exact strings your queries return.

@@ -1109,3 +1109,15 @@ def test_walk_skips_a_cooling_title_without_spending_the_budget():
     )
     assert [c.title_id for c in got] == ["999"]
     assert calls["title_meta"] == 1, "a cooling title must be skipped before its metadata call"
+
+
+def test_configured_subjects_exclude_the_dead_headings():
+    """'Botany, Pictorial works' and 'Plants Pictorial works' returned zero
+    title-level publications against the live API, so the channel ran on one
+    subject for weeks without anything failing. A non-existent heading is
+    indistinguishable from a thin one, so the only defence is not shipping
+    headings that were never verified."""
+    subjects = load_config().source.subjects
+    assert "Botany, Pictorial works" not in subjects
+    assert "Plants Pictorial works" not in subjects
+    assert "botany" in subjects
