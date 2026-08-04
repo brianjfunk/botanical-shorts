@@ -219,8 +219,8 @@ def cmd_channel_art(args: argparse.Namespace) -> int:
     out_dir = Path(args.out) if args.out else cfg.output_dir / "channel-art"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    plates = channel_art.collect_plates(cfg, count=args.plates)
-    print(f"collected {len(plates)} licence-passed plates")
+    plates = channel_art.collect_plates(cfg, count=args.plates, offset=args.offset)
+    print(f"collected {len(plates)} licence-passed plates (offset {args.offset})")
 
     banner = channel_art.build_banner(
         plates,
@@ -235,7 +235,11 @@ def cmd_channel_art(args: argparse.Namespace) -> int:
     avatar.save(out_dir / "avatar.png")
     channel_art.circular_preview(avatar).save(out_dir / "avatar-circle.png")
 
-    (out_dir / "credits.txt").write_text(channel_art.attribution_block(plates))
+    # The offset is what makes a build reproducible, so it belongs with the
+    # record of which plates were used.
+    (out_dir / "credits.txt").write_text(
+        f"{channel_art.attribution_block(plates)}\n\nBuilt with --offset {args.offset}.\n"
+    )
 
     print(f"\nbanner       {banner.size[0]}x{banner.size[1]}  -> {out_dir / 'banner.png'}")
     print(f"  safe area  cropped preview   -> {out_dir / 'banner-safe-area.png'}")
@@ -304,6 +308,13 @@ def main(argv: list[str] | None = None) -> int:
     p_art = sub.add_parser("channel-art", help="build the channel banner and profile picture")
     p_art.add_argument(
         "--plates", type=int, default=12, help="how many plates to collect for the banner row"
+    )
+    p_art.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        help="rotate the starting point in the title list; change it to get a "
+             "different draw, keep it to reproduce a build exactly",
     )
     p_art.add_argument("--out", help="output directory")
     p_art.set_defaults(func=cmd_channel_art)

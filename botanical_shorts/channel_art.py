@@ -183,6 +183,7 @@ def collect_plates(
     count: int,
     session=None,
     vision_client=None,
+    offset: int = 0,
     max_aspect: float = 1.6,
 ) -> list[Plate]:
     """Walk BHL for ``count`` distinct licence-passed plates fit for a collage.
@@ -190,6 +191,14 @@ def collect_plates(
     Deliberately does *not* consult the published history: channel art is not
     an episode, and reusing a plate here neither burns it nor repeats it in the
     feed.
+
+    That makes the walk fully deterministic, which is a trap: re-running to get
+    an alternative to compare against returns the identical set, and looks like
+    the build silently failed. ``offset`` rotates the starting point in the
+    title list -- the same lever the video pipeline pulls with
+    ``title_offset``. A different offset is a genuinely different draw; the
+    same offset reproduces a build exactly, which is what you want when only
+    the compositing changed.
 
     ``max_aspect`` is looser than the video pipeline's, because a row of varied
     plate shapes is the point here rather than a defect.
@@ -218,6 +227,7 @@ def collect_plates(
         max_items_per_title=cfg.source.max_items_per_title,
         max_pages_per_item=cfg.source.max_pages_per_item,
         limit=cfg.source.max_candidates,
+        title_offset=offset,
     )
 
     for candidate in candidates:
