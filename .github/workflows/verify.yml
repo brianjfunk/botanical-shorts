@@ -21,6 +21,10 @@ on:
         description: "Optional: report which channel this video id landed on"
         type: string
         default: ""
+      page_ids:
+        description: "Optional: space-separated BHL page ids to resolve to their volume and work"
+        type: string
+        default: ""
 
 concurrency:
   group: verify-${{ github.ref }}
@@ -115,6 +119,15 @@ jobs:
         env:
           BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
         run: python -m botanical_shorts.cli verify-bhl
+
+      # Ad-hoc provenance lookup. History stores page and item ids, which the
+      # dedupe rules need but which cannot answer "same book?" -- the question
+      # that decides whether a title-level rule is worth having.
+      - name: Resolve page ids to their work
+        if: steps.secrets.outputs.bhl == 'true' && inputs.page_ids != ''
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+        run: python -m botanical_shorts.cli page-info ${{ inputs.page_ids }}
 
       - name: Dry run -- select, gate and frame a real plate
         if: steps.secrets.outputs.bhl == 'true' && steps.secrets.outputs.anthropic == 'true'

@@ -7,8 +7,13 @@ name: Daily plate
 
 on:
   schedule:
-    # 13:10 UTC daily. Off the hour, since scheduled runs bunch up on the hour.
-    - cron: "10 13 * * *"
+    # Weekdays at 13:10 UTC -- five a week. Off the hour, since scheduled runs
+    # bunch up on the hour; GitHub's scheduler is best-effort either way and
+    # delays of an hour or more are normal, so treat the time as approximate.
+    #
+    # Five rather than seven because the pool of licence-passed, gate-passing
+    # plates is finite and every published plate is retired from it for good.
+    - cron: "10 13 * * 1-5"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -34,7 +39,10 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Sized for the seeding batch, not the daily single. History is committed
+    # once, after the whole run: a timeout mid-batch loses the record of every
+    # video already uploaded, and the next run would publish them again.
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
@@ -78,8 +86,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+      # Runs even when the pipeline step failed. A batch that produces fewer
+      # plates than asked for exits non-zero, but the videos it *did* upload
+      # are already live -- gating this on success would leave them unrecorded
+      # and the next run would publish them a second time. The history file is
+      # written after each upload, so whatever is on disk is accurate.
       - name: Commit history
-        if: success() && !inputs.dry_run && !inputs.skip_upload
+        if: always() && !inputs.dry_run && !inputs.skip_upload
         run: |
           if git diff --quiet -- state/history.json; then
             echo "history unchanged"

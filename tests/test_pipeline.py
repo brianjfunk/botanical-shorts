@@ -230,6 +230,7 @@ def verdict(**overrides) -> VisionVerdict:
         caption_embedded=True,
         species_name_visible=True,
         is_illustration=True,
+        is_spread=False,
         subject_summary="A flowering magnolia branch",
         issues=[],
     )
@@ -252,6 +253,23 @@ def test_non_illustration_rejected():
     assert not ok and "pictorial" in reason
 
 
+def test_two_page_spread_rejected():
+    """A capture of two facing pages, illustration beside letterpress.
+
+    Framed whole, the plate shares the screen with a page of text and a fold
+    down the middle. The aspect gate only catches spreads wide enough to trip
+    it, and two tall narrow pages stay under the limit -- which is how an
+    Agapanthus spread reached the seeding batch.
+    """
+    ok, reason = passes(verdict(is_spread=True), min_quality=7, caption_mode="log_only")
+    assert not ok and "two facing pages" in reason
+
+
+def test_single_wide_plate_is_not_treated_as_a_spread():
+    ok, _ = passes(verdict(is_spread=False), min_quality=7, caption_mode="log_only")
+    assert ok
+
+
 def test_missing_caption_accepted_in_log_only_mode():
     ok, _ = passes(verdict(caption_embedded=False), min_quality=7, caption_mode="log_only")
     assert ok, "log_only must record the caption verdict without enforcing it"
@@ -264,7 +282,7 @@ def test_missing_caption_rejected_in_hard_gate_mode():
 
 def test_vision_error_fails_closed():
     ok, _ = passes(
-        VisionVerdict(0, False, False, False, "", [], error="timeout"),
+        VisionVerdict(0, False, False, False, False, "", [], error="timeout"),
         min_quality=7,
         caption_mode="log_only",
     )
@@ -922,3 +940,85 @@ def test_title_offset_rotates_the_window(tmp_path):
         hist.record({"page_id": f"x{i}", "item_id": f"x{i}"})
     later = next(iter(_walk(PoolClient(), hist, titles_per_subject=5)))
     assert later.title_id != first_at_zero.title_id, "window did not rotate"
+
+
+# -- image gates ported from the channel-art build ---------------------------
+
+def _paper(w=1200, h=1500, tone=(232, 222, 201)):
+    return Image.new("RGB", (w, h), tone)
+
+
+def test_shipped_config_carries_the_ported_gates():
+    cfg = load_config()
+    assert cfg.image.min_border_luminance == 140
+    assert cfg.image.min_ink_coverage == 0.05
+
+
+def test_black_framed_scan_is_rejected_before_framing():
+    """sampled_paper would read the frame as scanner void and fall back to
+    parchment, leaving a hard dark rectangle on a parchment field."""
+    img = _paper()
+    img.paste(Image.new("RGB", (1200, 100), (4, 4, 4)), (0, 0))
+    with pytest.raises(imaging.ImageError, match="dark frame or mount"):
+        imaging.check_border_tone(img, 140)
+
+
+def test_plate_on_clean_paper_passes_the_border_check():
+    imaging.check_border_tone(_paper(), 140)
+
+
+def test_faint_pencil_study_is_rejected_though_the_scan_is_clean():
+    """Exactly what scan_quality cannot catch: the scan is fine, the plate is
+    almost empty."""
+    from PIL import ImageDraw
+
+    img = _paper(tone=(250, 250, 248))
+    draw = ImageDraw.Draw(img)
+    for y in range(600, 660, 12):
+        draw.line([(500, y), (700, y)], fill=(205, 205, 203), width=1)
+    with pytest.raises(imaging.ImageError, match="would read as blank"):
+        imaging.check_ink_coverage(img, 0.05)
+
+
+def test_properly_engraved_plate_clears_the_ink_floor():
+    from PIL import ImageDraw
+
+    img = _paper()
+    draw = ImageDraw.Draw(img)
+    for y in range(300, 1200, 4):
+        draw.line([(200, y), (1000, y)], fill=(30, 25, 20), width=2)
+    imaging.check_ink_coverage(img, 0.05)
+
+
+def test_ink_is_measured_against_the_plates_own_paper_not_white():
+    """A browned scan must not have its blank margin scored as ink."""
+    browned = _paper(tone=(176, 158, 126))
+    assert imaging.ink_coverage(browned) < 0.01
+
+
+# -- spread regression -------------------------------------------------------
+#
+# Page 48345298 is the Agapanthus that reached the seeding batch: a capture of
+# two facing pages, the plate on one side and letterpress on the other, with
+# the fold between them. It cleared every gate at the time -- including the
+# aspect check, because two tall narrow pages side by side stay under the 1.25
+# limit that a wide spread would trip. Pinned so a future change that relaxes
+# the spread gate fails here rather than on the channel.
+
+SPREAD_PAGE_ID = "48345298"
+
+
+def test_spread_page_is_not_caught_by_aspect_alone(license_cfg):
+    """Document why geometry was not enough, so the vision gate is not dropped."""
+    cand = make_candidate(page_id=SPREAD_PAGE_ID)
+    assert licensing.evaluate(cand, license_cfg).allowed
+    # A spread of two tall pages: wider than a single plate, still under the cap.
+    spread = Image.new("RGB", (1200, 1000), (232, 222, 201))
+    imaging.check_aspect(spread, 1.25)  # passes -- which is the whole problem
+
+
+def test_spread_verdict_rejects_that_page():
+    ok, reason = passes(
+        verdict(is_spread=True), min_quality=7, caption_mode="log_only"
+    )
+    assert not ok and "two facing pages" in reason

@@ -81,6 +81,16 @@ image:
   # occupy a thin band mid-frame, and cropping to fill would risk clipping the
   # plate's engraved caption. Most bound plates are portrait.
   max_source_aspect: 1.25
+  # Both learned from building the channel art, where the same faults were
+  # obvious the moment a dozen plates sat side by side.
+  #
+  # A scan whose own edge is dark -- a black scan frame, a dark mount, a
+  # photograph shot against cloth -- makes sampled_paper fall back to
+  # parchment, leaving a hard rectangle on a parchment field.
+  min_border_luminance: 140
+  # A faint pencil study is a clean scan, so scan_quality rates it highly, and
+  # it still frames as an empty page.
+  min_ink_coverage: 0.05
 
 video:
   # Short by design: on a truly static frame the loop point is invisible, so a
@@ -90,11 +100,17 @@ video:
   crf: 18
 
 upload:
-  # DISABLED: the first real upload landed on the wrong channel (a personal
-  # channel rather than @TheHerbalShorts), because the OAuth consent flow was
-  # completed with that channel selected. Re-enable once a refresh token bound
-  # to the intended channel is in place and `check-youtube` names it.
-  enabled: false
+  # Re-enabled after the wrong-channel incident: the first real upload landed
+  # on a personal channel because the consent flow was completed with that
+  # channel selected. The token has since been re-minted against
+  # @TheHerbalShorts and the old grant revoked.
+  #
+  # Note the binding is NOT machine-verified: the current token carries only
+  # the youtube.upload scope, which is write-only and cannot read back which
+  # channel it publishes to. Re-run scripts/get_youtube_refresh_token.py to
+  # pick up youtube.readonly and `check-youtube` will name the channel outright
+  # -- worth doing before any large batch.
+  enabled: true
   privacy_status: "private"
   # The passive veto window -- auto-publishes unless pulled in Studio.
   publish_delay_hours: 24

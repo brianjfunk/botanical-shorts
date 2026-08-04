@@ -104,6 +104,9 @@ def select_and_build(
                 img, cfg.image.min_source_width, cfg.image.min_source_height
             )
             imaging.check_aspect(img, cfg.image.max_source_aspect)
+            # Cheap and local, so both run before spending a vision call.
+            imaging.check_border_tone(img, cfg.image.min_border_luminance)
+            imaging.check_ink_coverage(img, cfg.image.min_ink_coverage)
         except (bhl.BHLError, imaging.ImageError, requests.RequestException) as exc:
             rejections.append(Rejection(page_id, "download", str(exc)))
             continue
@@ -189,6 +192,7 @@ def select_and_build(
                     "scan_quality": vision_verdict.scan_quality,
                     "caption_embedded": vision_verdict.caption_embedded,
                     "species_name_visible": vision_verdict.species_name_visible,
+                    "is_spread": vision_verdict.is_spread,
                     "subject_summary": vision_verdict.subject_summary,
                     "vision_issues": vision_verdict.issues,
                     "caption_mode": cfg.vision.caption_mode,

@@ -172,8 +172,19 @@ python -m botanical_shorts.cli run --skip-upload
 python -m botanical_shorts.cli preview path/to/plate.jpg
 ```
 
-The workflow runs daily at 13:10 UTC and is also dispatchable by hand with
-`dry_run` / `skip_upload` toggles.
+The workflow runs on weekdays at about 13:10 UTC -- five videos a week -- and is
+also dispatchable by hand with `dry_run` / `skip_upload` / `count` inputs.
+GitHub's scheduler is best-effort, so the exact minute drifts.
+
+Two things govern how many videos can actually appear:
+
+* **The plate pool is finite.** Every published plate is retired from it
+  permanently, and the quality gates retire many more unpublished. Five a week
+  rather than seven is a deliberate concession to that.
+* **YouTube caps uploads per day.** The seeding batch hit
+  `uploadLimitExceeded` at video 19. Deleting videos does not refund the
+  allowance -- it counts upload attempts, not videos currently on the channel.
+  Phone-verifying the channel in Studio raises the ceiling.
 
 ## State
 

@@ -1,0 +1,108 @@
+name: Channel art
+
+# Builds the channel banner and profile picture from real licence-passed
+# plates and attaches them to the run. Uploads nothing to YouTube: channel
+# branding is a set-once decision that wants a human look first, and the
+# branding endpoints need a scope the pipeline's token does not carry.
+#
+# Runs here rather than locally because biodiversitylibrary.org is reachable
+# from Actions runners and not from the development sandbox.
+
+on:
+  workflow_dispatch:
+    inputs:
+      plates:
+        description: "How many plates to collect for the banner row"
+        type: string
+        default: "12"
+      offset:
+        description: "Change this for a different draw; the walk is otherwise deterministic and returns the same plates"
+        type: string
+        default: "0"
+  # So a change to the compositing code produces fresh art to look at without
+  # waiting for a merge to the default branch, where dispatch would be listed.
+  push:
+    branches:
+      - "claude/**"
+    paths:
+      - "botanical_shorts/channel_art.py"
+      - ".github/workflows/channel-art.yml"
+
+concurrency:
+  group: channel-art-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Geometry tests
+        run: python -m pytest tests/test_channel_art.py -q
+
+      - name: Build banner and avatar
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$BHL_API_KEY" ]; then
+            echo "::error::BHL_API_KEY is not set; cannot source plates."
+            exit 1
+          fi
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::ANTHROPIC_API_KEY is not set; the suitability check needs it."
+            exit 1
+          fi
+          python -m botanical_shorts.cli -v channel-art \
+            --plates "${{ inputs.plates || '12' }}" \
+            --offset "${{ inputs.offset || '0' }}"
+
+      - name: Upload channel art
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: channel-art
+          path: build/channel-art/
+          if-no-files-found: error
+          retention-days: 30
+
+      # Also commit the art into the repo. Artifacts expire, live behind a zip
+      # download, and are awkward to view on a phone; committed files render
+      # inline on github.com and survive as the record of what the channel
+      # actually shows. Small enough to be worth it for a set-once asset.
+      - name: Commit channel art
+        run: |
+          mkdir -p channel-art
+          cp build/channel-art/* channel-art/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Stage before testing for changes: `git diff` ignores untracked
+          # files, so on the first run -- when the whole directory is new --
+          # it reports nothing to do and the art is silently never committed.
+          git add channel-art/
+          if git diff --cached --quiet -- channel-art/; then
+            echo "channel art unchanged"
+            exit 0
+          fi
+          git commit -m "Rebuild channel art ($(date -u +%Y-%m-%d))"
+          for attempt in 1 2 3; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
+              git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $((attempt * 4))
+          done
+          echo "::error::could not push the channel art"
+          exit 1

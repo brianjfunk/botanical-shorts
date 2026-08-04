@@ -31,6 +31,9 @@ log = logging.getLogger(__name__)
 # Never upscale a plate by more than this; beyond it the scan turns to mush.
 MAX_UPSCALE = 1.6
 
+# How far below its own paper tone a pixel must fall to count as ink.
+MIN_INK_DEPTH = 40
+
 
 class ImageError(RuntimeError):
     """The source scan is unusable for framing."""
@@ -164,6 +167,83 @@ def frame_vertical(
         plate_size=(plate_w, plate_h),
         upscaled=upscaled,
     )
+
+
+def _ink_grid(img: Image.Image, grid: int = 160) -> tuple[list[list[float]], int, int, float]:
+    """Downscale to a coarse map of how much *ink* each cell holds.
+
+    Ink is measured against the plate's own paper tone rather than against
+    white: an 1820s scan can have a paper baseline down in the 180s, and
+    measuring darkness absolutely would score the blank margin of a browned
+    plate the same as light engraving on a clean one.
+    """
+    paper = sample_paper_color(img)
+    paper_lum = sum(paper) / 3
+
+    w, h = img.size
+    scale = grid / max(w, h)
+    gw, gh = max(1, round(w * scale)), max(1, round(h * scale))
+    small = img.convert("L").resize((gw, gh), Image.BILINEAR)
+    px = small.load()
+
+    cells = [[max(0.0, paper_lum - px[x, y]) for x in range(gw)] for y in range(gh)]
+    return cells, gw, gh, w / gw
+
+
+def ink_coverage(img: Image.Image) -> float:
+    """Fraction of the plate carrying meaningful ink, against its own paper."""
+    cells, gw, gh, _ = _ink_grid(img)
+    inked = sum(1 for row in cells for v in row if v >= MIN_INK_DEPTH)
+    return inked / max(1, gw * gh)
+
+
+def border_luminance(img: Image.Image) -> float:
+    """Mean luminance of the scan's *darkest* edge strip.
+
+    The darkest edge decides rather than the average: one black scan frame is
+    enough to spoil the effect even when the other three edges are clean paper.
+    """
+    w, h = img.size
+    bw, bh = max(1, int(w * 0.04)), max(1, int(h * 0.04))
+    strips = [
+        img.crop((0, 0, w, bh)),
+        img.crop((0, h - bh, w, h)),
+        img.crop((0, 0, bw, h)),
+        img.crop((w - bw, 0, w, h)),
+    ]
+    return min(sum(ImageStat.Stat(s).median[:3]) / 3 for s in strips)
+
+
+def check_border_tone(img: Image.Image, min_luminance: float) -> None:
+    """Reject scans whose own edge is dark rather than paper.
+
+    A black scan frame, a dark mount board, or a photograph shot against cloth
+    cannot be letterboxed onto paper. ``sample_paper_color`` samples that edge,
+    reads it as scanner void, and falls back to parchment -- so the plate ends
+    up as a hard dark rectangle sitting on a parchment field, which is the one
+    result the letterbox decision was meant to avoid.
+    """
+    lum = border_luminance(img)
+    if lum < min_luminance:
+        raise ImageError(
+            f"border luminance {lum:.0f} is below {min_luminance:.0f}: the scan "
+            "has a dark frame or mount and cannot sit on a paper field"
+        )
+
+
+def check_ink_coverage(img: Image.Image, min_coverage: float) -> None:
+    """Reject plates too faintly inked to read as a picture.
+
+    Distinct from scan quality, which scores the *scan*: a pristine capture of
+    a faint pencil study scores highly there and still gives a frame that looks
+    empty.
+    """
+    coverage = ink_coverage(img)
+    if coverage < min_coverage:
+        raise ImageError(
+            f"only {coverage * 100:.1f}% of the plate carries ink "
+            f"(minimum {min_coverage * 100:.1f}%): it would read as blank"
+        )
 
 
 def check_source_resolution(img: Image.Image, min_width: int, min_height: int) -> None:
