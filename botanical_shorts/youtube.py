@@ -53,10 +53,23 @@ def build_credentials(client_id: str, client_secret: str, refresh_token: str) ->
     try:
         creds.refresh(Request())
     except Exception as exc:
+        detail = str(exc)
+        if "invalid_grant" in detail:
+            hint = (
+                "the refresh token is no longer valid. In order of likelihood:\n"
+                "  1. You re-ran the consent flow but did not paste the NEW token "
+                "into the YOUTUBE_REFRESH_TOKEN secret. Re-consenting revokes the "
+                "previous token, so the stored one stops working the moment a new "
+                "one is minted -- completing the browser flow is not enough.\n"
+                "  2. The grant was revoked at "
+                "https://myaccount.google.com/permissions.\n"
+                "  3. The OAuth app is still in Testing mode, whose tokens expire "
+                "after ~7 days; publish it to Production."
+            )
+        else:
+            hint = "the token exchange was rejected."
         raise UploadError(
-            "could not refresh the YouTube access token. If the Google Cloud OAuth "
-            "app is still in Testing mode its refresh tokens expire after ~7 days; "
-            f"publish it to Production and re-run the consent flow. ({exc})"
+            f"could not refresh the YouTube access token: {hint}\n({detail})"
         ) from exc
     return creds
 
