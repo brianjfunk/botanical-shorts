@@ -38,6 +38,11 @@ class SourceConfig:
     max_pages_per_item: int
     # Hard cap on candidates evaluated in one run, to bound API/vision spend.
     max_candidates: int
+    # How many recently published videos a work stays locked for. Guards
+    # against near-identical plates from one long-running serial landing close
+    # together in the feed. Bounded by the number of distinct usable titles:
+    # a survey found 82, so a cooldown much above half that starves the walk.
+    title_cooldown: int = 40
 
 
 @dataclass(frozen=True)
@@ -85,7 +90,7 @@ class ImageConfig:
     # Minimum mean luminance of the scan's darkest edge strip. Below this the
     # scan has a black frame or dark mount, sampled_paper falls back to
     # parchment, and the plate reads as a dark rectangle pasted on a sheet.
-    min_border_luminance: float = 140.0
+    min_border_luminance: float = 60.0
     # Minimum fraction of the plate carrying ink, measured against its own
     # paper tone. Catches faint pencil studies, which score well on scan
     # quality -- the scan is fine -- and still frame as an empty page.

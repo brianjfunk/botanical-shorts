@@ -292,6 +292,7 @@ def iter_candidates(
     limit: int,
     skip_pages: Iterable[str] = (),
     skip_items: Iterable[str] = (),
+    skip_titles: Iterable[str] = (),
     title_offset: int = 0,
 ) -> Iterator[PageCandidate]:
     """Walk subject -> title -> item -> page, yielding illustration plates.
@@ -305,6 +306,14 @@ def iter_candidates(
     candidates fills with history until no new plate can ever surface.
     Skipping a whole item early also avoids a pointless GetItemMetadata call.
 
+    ``skip_titles`` is the cooldown: works featured recently enough that
+    another plate from them would read as a repeat. Serials like Edwards's
+    Botanical Register ran for decades and reissued the same engravings across
+    volumes, so two plates from one work can be near-identical while differing
+    in both page and item id -- which is exactly how a duplicate lupine reached
+    the channel. Skipped before the title metadata call, and without spending
+    any of ``limit``.
+
     ``title_offset`` rotates the starting point in each subject's title list,
     so consecutive runs explore different works instead of re-walking (and
     re-skipping) the same head of the list every day.
@@ -312,6 +321,7 @@ def iter_candidates(
     wanted_types = {t.strip().lower() for t in page_types}
     seen_pages = {str(p) for p in skip_pages}
     seen_items = {str(i) for i in skip_items}
+    cooling_titles = {str(t) for t in skip_titles}
     emitted = 0
 
     for subject in subjects:
@@ -334,6 +344,10 @@ def iter_candidates(
                 return
             title_id = str(pick(title_rec, "title_id") or "")
             if not title_id:
+                continue
+            if title_id in cooling_titles:
+                # Featured too recently; skip before the metadata call and
+                # without spending any of `limit`.
                 continue
 
             year = _year(pick(title_rec, "year"))

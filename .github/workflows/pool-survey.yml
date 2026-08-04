@@ -25,10 +25,21 @@ on:
         description: "Override source.titles_per_subject (blank = use config)"
         type: string
         default: ""
+      find_subjects:
+        description: "Optional: space-separated terms to search for real BHL subject headings"
+        type: string
+        default: ""
+      backfill_history:
+        description: "Resolve title_id for older history entries and commit"
+        type: boolean
+        default: false
 
 concurrency:
   group: pool-survey
   cancel-in-progress: true
+
+permissions:
+  contents: write
 
 jobs:
   survey:
@@ -59,6 +70,39 @@ jobs:
             ARGS="$ARGS --titles ${{ inputs.titles }}"
           fi
           python -m botanical_shorts.cli pool-survey $ARGS | tee survey.txt
+
+      # Two of three configured subjects returned zero titles, and nothing
+      # failed loudly: a heading that does not exist looks exactly like one
+      # that is merely thin.
+      - name: Find real subject headings
+        if: inputs.find_subjects != ''
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+        run: python -m botanical_shorts.cli find-subjects ${{ inputs.find_subjects }} | tee -a survey.txt
+
+      # The cooldown works off title_id; entries recorded before it was tracked
+      # are invisible to it, so the already-published works would not lock.
+      - name: Backfill history title ids
+        if: inputs.backfill_history
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+        run: |
+          python -m botanical_shorts.cli backfill-history
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/history.json
+          if git diff --cached --quiet -- state/history.json; then
+            echo "history unchanged"
+            exit 0
+          fi
+          git commit -m "Backfill title_id on published history"
+          for attempt in 1 2 3; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
+              git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $((attempt * 4))
+          done
+          echo "::error::could not push the backfilled history"
+          exit 1
 
       - name: Upload survey
         if: always()

@@ -33,6 +33,10 @@ source:
   # Cap per volume so one heavily-illustrated book cannot dominate the pool.
   max_pages_per_item: 6
   max_candidates: 400
+  # Works stay locked for this many published videos. 40 is ~two months at five
+  # a week, and roughly half the 82 distinct usable titles a pool survey found
+  # -- push it much higher and the walk runs out of unlocked works.
+  title_cooldown: 40
 
 license:
   # Allowlist, matched case-insensitively as substrings against BHL's
@@ -87,7 +91,10 @@ image:
   # A scan whose own edge is dark -- a black scan frame, a dark mount, a
   # photograph shot against cloth -- makes sampled_paper fall back to
   # parchment, leaving a hard rectangle on a parchment field.
-  min_border_luminance: 140
+  # 140 was set to catch scanner void (which reads 0-6) but was also rejecting
+  # ordinary dark or browned stock at 70-120, costing about a quarter of the
+  # pool. 60 still clears a black frame by a wide margin.
+  min_border_luminance: 60
   # A faint pencil study is a clean scan, so scan_quality rates it highly, and
   # it still frames as an empty page.
   min_ink_coverage: 0.05

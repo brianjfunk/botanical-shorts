@@ -206,6 +206,102 @@ def cmd_check_youtube(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_find_subjects(args: argparse.Namespace) -> int:
+    """Search BHL for subject headings that actually carry titles.
+
+    Two of the three configured subjects returned zero title-level
+    publications, so the channel had been running on one subject without
+    anything failing loudly -- a heading that does not exist looks exactly like
+    one that is merely thin. This searches for real headings and reports how
+    many titles each carries, so `source.subjects` can be set from evidence.
+    """
+    cfg = load_config(args.config)
+    client = bhl.BHLClient(require_env("BHL_API_KEY"))
+
+    found: dict[str, int] = {}
+    for term in args.terms:
+        print(f"\n== SubjectSearch({term!r})")
+        try:
+            result = client.call("SubjectSearch", searchterm=term)
+        except Exception as exc:
+            print(f"   search failed: {exc}")
+            continue
+        names = []
+        for rec in bhl._as_list(result):
+            name = str(
+                rec.get("SubjectText") or rec.get("Subject") or rec.get("Name") or ""
+            ).strip()
+            if name:
+                names.append(name)
+        print(f"   {len(names)} headings returned")
+
+        for name in names[: args.per_term]:
+            if name in found:
+                continue
+            try:
+                titles = client.subject_titles(name)
+            except Exception as exc:
+                print(f"   [err ] {name[:60]}: {exc}")
+                continue
+            found[name] = len(titles)
+            flag = "ok  " if titles else "EMPTY"
+            print(f"   [{flag}] {len(titles):4} titles  {name[:60]}")
+
+    usable = {k: v for k, v in found.items() if v > 0}
+    print(f"\n== {len(usable)} headings carry titles, of {len(found)} probed")
+    for name, count in sorted(usable.items(), key=lambda kv: -kv[1])[:25]:
+        print(f"   {count:4}  {name}")
+
+    configured = set(cfg.source.subjects)
+    dead = [s for s in configured if found.get(s, 0) == 0 and s in found]
+    if dead:
+        print(f"\n   Configured but empty: {', '.join(dead)}")
+    return 0
+
+
+def cmd_backfill_history(args: argparse.Namespace) -> int:
+    """Fill in title_id for history entries recorded before it was tracked.
+
+    The cooldown works off title_id, so entries without one are invisible to
+    it -- the 19 already-published plates would not lock their works. Resolves
+    each page to its title and rewrites the file.
+    """
+    from .history import History
+
+    cfg = load_config(args.config)
+    client = bhl.BHLClient(require_env("BHL_API_KEY"))
+    history = History(cfg.history_path)
+
+    missing = [e for e in history.entries if not e.get("title_id")]
+    print(f"{len(missing)} of {len(history.entries)} entries need a title_id")
+
+    for entry in missing:
+        page_id = str(entry.get("page_id") or "")
+        if not page_id:
+            continue
+        try:
+            page = client.get_page_metadata(page_id)
+            item_id = str(bhl.pick(page, "item_id") or entry.get("item_id") or "")
+            item = client.get_item_metadata(item_id, pages=False) if item_id else {}
+            title_id = str(bhl.pick(item, "title_id") or "")
+        except Exception as exc:
+            print(f"   page {page_id}: lookup failed ({exc})")
+            continue
+        if title_id:
+            entry["title_id"] = title_id
+            print(f"   page {page_id} -> title {title_id}")
+        else:
+            print(f"   page {page_id}: no title_id resolved")
+
+    if args.dry_run:
+        print("\ndry run; history not written")
+        return 0
+
+    history.save()
+    print(f"\nwrote {cfg.history_path}")
+    return 0
+
+
 def cmd_pool_survey(args: argparse.Namespace) -> int:
     """Measure how deep the usable plate pool is, and how many works it spans.
 
@@ -462,6 +558,15 @@ def main(argv: list[str] | None = None) -> int:
         "--video-id", help="also report which channel this video landed on and its state"
     )
     p_check.set_defaults(func=cmd_check_youtube)
+
+    p_find = sub.add_parser("find-subjects", help="search BHL for subject headings that carry titles")
+    p_find.add_argument("terms", nargs="+", help="search terms to probe")
+    p_find.add_argument("--per-term", type=int, default=8, help="headings to test per term")
+    p_find.set_defaults(func=cmd_find_subjects)
+
+    p_back = sub.add_parser("backfill-history", help="resolve title_id for older history entries")
+    p_back.add_argument("--dry-run", action="store_true", help="report without writing")
+    p_back.set_defaults(func=cmd_backfill_history)
 
     p_pool = sub.add_parser("pool-survey", help="measure how deep the usable plate pool is")
     p_pool.add_argument("--limit", type=int, default=1500, help="candidates to walk")
