@@ -90,11 +90,17 @@ video:
   crf: 18
 
 upload:
-  # DISABLED: the first real upload landed on the wrong channel (a personal
-  # channel rather than @TheHerbalShorts), because the OAuth consent flow was
-  # completed with that channel selected. Re-enable once a refresh token bound
-  # to the intended channel is in place and `check-youtube` names it.
-  enabled: false
+  # Re-enabled after the wrong-channel incident: the first real upload landed
+  # on a personal channel because the consent flow was completed with that
+  # channel selected. The token has since been re-minted against
+  # @TheHerbalShorts and the old grant revoked.
+  #
+  # Note the binding is NOT machine-verified: the current token carries only
+  # the youtube.upload scope, which is write-only and cannot read back which
+  # channel it publishes to. Re-run scripts/get_youtube_refresh_token.py to
+  # pick up youtube.readonly and `check-youtube` will name the channel outright
+  # -- worth doing before any large batch.
+  enabled: true
   privacy_status: "private"
   # The passive veto window -- auto-publishes unless pulled in Studio.
   publish_delay_hours: 24
