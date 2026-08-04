@@ -192,6 +192,7 @@ def select_and_build(
                     "scan_quality": vision_verdict.scan_quality,
                     "caption_embedded": vision_verdict.caption_embedded,
                     "species_name_visible": vision_verdict.species_name_visible,
+                    "is_spread": vision_verdict.is_spread,
                     "subject_summary": vision_verdict.subject_summary,
                     "vision_issues": vision_verdict.issues,
                     "caption_mode": cfg.vision.caption_mode,

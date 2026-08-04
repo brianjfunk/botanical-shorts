@@ -66,11 +66,17 @@ narrower than caption_embedded: a plate number ("1217") or an imprint line \
 ("Pub. by J. Ridgway") is lettering but is NOT a name. Answer false when the only \
 lettering is a number, an imprint, or an engraver credit.
 - is_illustration (boolean): is this page primarily a finished pictorial plate? \
-Answer false for a page of body text, a title page, an index or a blank; for a \
-rough sketchbook or notebook page carrying pencil studies and handwritten \
-annotations; and for any capture that includes scanning furniture -- a ruler or \
-measuring scale, a colour calibration bar or greyscale target, or a library stamp \
-laid beside the page.
+Answer false for a page of body text, an index or a blank; for a rough sketchbook \
+or notebook page carrying pencil studies and handwritten annotations; and for any \
+capture that includes scanning furniture -- a ruler or measuring scale, a colour \
+calibration bar or greyscale target, or a library stamp laid beside the page. Also \
+answer false for a title page even when it is decorated with drawn flowers or \
+ornament: if the lettering is the dominant element of the page, it is a title page \
+and not a plate.
+- is_spread (boolean): does this capture show TWO facing pages photographed \
+together, with a gutter or fold running between them -- for example an \
+illustration on one side and a page of letterpress text on the other? Answer true \
+only for a genuine two-page capture. A single plate is false, however wide it is.
 - subject_summary (string, max 8 words): the subject itself as a short noun \
 phrase. Name it directly -- do NOT begin with "Botanical illustration of", "An \
 illustration of", "A drawing of" or similar. If a name is legible on the plate, \
@@ -79,7 +85,7 @@ illustration of a lupine plant with purple flowers".
 - issues (array of short strings): specific defects you observed, empty if none.
 
 Respond with ONLY a JSON object with keys: scan_quality, caption_embedded, \
-species_name_visible, is_illustration, subject_summary, issues."""
+species_name_visible, is_illustration, is_spread, subject_summary, issues."""
 
 
 @dataclass
@@ -91,6 +97,11 @@ class VisionVerdict:
     # never gated on, since many fine plates put the name on a facing page.
     species_name_visible: bool
     is_illustration: bool
+    # Two facing pages captured together. Framed whole, the plate shares the
+    # screen with a page of letterpress and a fold down the middle; the aspect
+    # gate only catches spreads wide enough to trip it, which a spread of two
+    # tall narrow pages is not.
+    is_spread: bool
     subject_summary: str
     issues: list[str]
     raw: str = ""
@@ -169,6 +180,7 @@ def inspect_plate(client, img: Image.Image, *, model: str) -> VisionVerdict:
             caption_embedded=False,
             species_name_visible=False,
             is_illustration=False,
+            is_spread=False,
             subject_summary="",
             issues=[],
             error=str(exc),
@@ -179,6 +191,7 @@ def inspect_plate(client, img: Image.Image, *, model: str) -> VisionVerdict:
         caption_embedded=bool(data.get("caption_embedded")),
         species_name_visible=bool(data.get("species_name_visible")),
         is_illustration=bool(data.get("is_illustration")),
+        is_spread=bool(data.get("is_spread")),
         subject_summary=str(data.get("subject_summary") or "").strip(),
         issues=[str(i) for i in (data.get("issues") or [])],
         raw=raw,
@@ -194,6 +207,8 @@ def passes(verdict: VisionVerdict, *, min_quality: int, caption_mode: str) -> tu
         return False, f"vision check errored: {verdict.error}"
     if not verdict.is_illustration:
         return False, "not a pictorial plate"
+    if verdict.is_spread:
+        return False, "two facing pages captured together"
     if verdict.scan_quality < min_quality:
         issues = "; ".join(verdict.issues) or "no detail given"
         return False, f"scan quality {verdict.scan_quality} < {min_quality} ({issues})"
