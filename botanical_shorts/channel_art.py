@@ -109,6 +109,10 @@ NOT suitable, answer false for any of these:
 - a fanciful or allegorical scene: human or animal figures, fairies, costumed \
 characters, personified flowers, landscapes with people
 - a map, diagram, portrait, or an illustration of an animal rather than a plant
+- anything showing scanning furniture: a ruler, a measuring scale, a colour \
+calibration bar or chart, a library stamp, or a colour/greyscale target
+- a sketchbook or notebook page: rough pencil studies, handwritten notes or \
+annotations in the margin rather than a finished plate
 - a plate so faint, damaged, stained or skewed that it would look poor at small size
 
 Respond with ONLY a JSON object: {"suitable": true/false, "reason": "<8 words>"}"""
@@ -424,18 +428,42 @@ def build_avatar(
     return crop
 
 
-def best_avatar_plate(plates: Sequence[Plate]) -> Plate:
-    """Pick the plate whose densest crop carries the most contrast.
+def colorfulness(img: Image.Image) -> float:
+    """Mean separation between the colour channels.
 
-    Standard deviation stands in for "visual interest": a crop of flat paper or
-    of a uniform wash scores low, while one holding engraved line work against
-    paper scores high. At 800px shown as a circle, contrast is what survives.
+    Near zero for anything neutral -- pencil, plain engraving, and, crucially,
+    the black-and-white measuring scales and greyscale targets that scanning
+    operators lay beside a page.
+    """
+    from PIL import ImageChops
+
+    r, g, b = img.convert("RGB").split()
+    pairs = (
+        ImageChops.difference(r, g),
+        ImageChops.difference(g, b),
+        ImageChops.difference(r, b),
+    )
+    return sum(ImageStat.Stat(d).mean[0] for d in pairs) / 3
+
+
+def best_avatar_plate(plates: Sequence[Plate]) -> Plate:
+    """Pick the plate whose densest crop makes the strongest 800px circle.
+
+    Contrast alone is the wrong measure, and picking it cost a build: a
+    scanner's black-and-white ruler has more standard deviation than any
+    drawing on the page, so the avatar came out as a measuring scale and a
+    line of handwriting. Weighting by colour separation as well pushes the
+    choice towards chromolithographs -- which is what actually reads at the
+    size a profile picture is seen.
     """
 
     def score(plate: Plate) -> float:
         x, y, side = densest_square(plate.image, min_side_px=AVATAR_SIZE[0])
-        crop = plate.image.crop((x, y, x + side, y + side)).convert("L")
-        return ImageStat.Stat(crop).stddev[0]
+        crop = plate.image.crop((x, y, x + side, y + side))
+        contrast = ImageStat.Stat(crop.convert("L")).stddev[0]
+        # The constant keeps a superb monochrome engraving in the running
+        # rather than letting any colour at all beat it outright.
+        return contrast * (colorfulness(crop) + 6.0)
 
     return max(plates, key=score)
 

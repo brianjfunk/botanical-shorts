@@ -173,6 +173,36 @@ def test_crop_stays_inside_the_source():
     assert x + side <= img.width and y + side <= img.height
 
 
+def test_avatar_choice_is_not_hijacked_by_a_scanner_ruler():
+    """A build shipped an avatar of a measuring scale and some handwriting.
+
+    A black-and-white ruler beats any drawing on raw standard deviation, so
+    contrast alone picks the scanning furniture over the plate.
+    """
+    ruler = Image.new("RGB", (1600, 2000), (250, 249, 245))
+    draw = ImageDraw.Draw(ruler)
+    for i in range(0, 1600, 100):  # hard black/white bars, zero colour
+        draw.rectangle([i, 900, i + 50, 1400], fill=(0, 0, 0))
+
+    coloured = Image.new("RGB", (1600, 2000), (238, 230, 209))
+    draw = ImageDraw.Draw(coloured)
+    for y in range(600, 1500, 6):
+        draw.line([(500, y), (1200, y)], fill=(46, 104, 40), width=3)
+
+    plates_in = [
+        Plate(image=ruler, candidate=make_candidate(page_id="ruler")),
+        Plate(image=coloured, candidate=make_candidate(page_id="plate")),
+    ]
+    assert channel_art.best_avatar_plate(plates_in).candidate.page_id == "plate"
+
+
+def test_colorfulness_is_near_zero_for_neutral_images():
+    grey = Image.new("RGB", (400, 400), (128, 128, 128))
+    assert channel_art.colorfulness(grey) < 1.0
+    green = Image.new("RGB", (400, 400), (40, 140, 60))
+    assert channel_art.colorfulness(green) > 20.0
+
+
 def test_avatar_plate_choice_prefers_contrast_over_blank_paper():
     blank = Plate(image=plate(1600, 2000).image, candidate=make_candidate(page_id="blank"))
     drawn = Plate(
