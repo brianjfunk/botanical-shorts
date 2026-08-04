@@ -8,3 +8,5 @@ Channel art composited from public-domain plates:
 - Collection d'orchidées [art original] :aquarelles originales. s.n. Biodiversity Heritage Library. (https://www.biodiversitylibrary.org/page/35857177)
 
 Digitised by the Biodiversity Heritage Library.
+
+Built with --offset 0.
