@@ -211,6 +211,24 @@ def test_dark_bordered_scan_is_rejected(border):
     assert not ok and "dark border" in reason
 
 
+def test_faint_sketch_is_rejected_as_effectively_blank():
+    """Two pencil studies reached the first banner as empty white rectangles.
+
+    At full height in a video they are delicate drawings; shrunk to a collage
+    tile there is nothing there to see.
+    """
+    faint = Image.new("RGB", (1200, 1500), (250, 250, 248))
+    draw = ImageDraw.Draw(faint)
+    for y in range(500, 560, 12):  # a few pale strokes
+        draw.line([(500, y), (700, y)], fill=(205, 205, 203), width=1)
+    assert channel_art.ink_coverage(faint) < channel_art.MIN_INK_COVERAGE
+
+
+def test_a_properly_engraved_plate_clears_the_ink_floor():
+    inked = plate(1200, 1500, ink_box=(200, 300, 1000, 1200))
+    assert channel_art.ink_coverage(inked.image) >= channel_art.MIN_INK_COVERAGE
+
+
 def test_one_dark_edge_is_enough_to_reject():
     """Three clean edges do not rescue a plate guillotined by a black bar."""
     img = Image.new("RGB", (1200, 1500), (232, 222, 201))

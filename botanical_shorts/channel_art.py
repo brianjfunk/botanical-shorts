@@ -79,6 +79,21 @@ def blends_with_paper(img: Image.Image) -> tuple[bool, str]:
     return True, "blends"
 
 
+# A plate carrying less ink than this over its surface is a faint pencil study
+# or a barely-inked outline. At full height in a video it is a delicate
+# drawing; shrunk into a collage tile it is an empty white rectangle. Measured
+# as the fraction of the plate at least MIN_INK_DEPTH below its own paper tone.
+MIN_INK_COVERAGE = 0.05
+MIN_INK_DEPTH = 40
+
+
+def ink_coverage(img: Image.Image) -> float:
+    """Fraction of the plate carrying meaningful ink, against its own paper."""
+    cells, gw, gh, _ = _ink_grid(img)
+    inked = sum(1 for row in cells for v in row if v >= MIN_INK_DEPTH)
+    return inked / max(1, gw * gh)
+
+
 ART_PROMPT = """You are choosing plates for the channel art of a YouTube channel \
 that posts historical botanical illustrations. This is a scanned page from a \
 natural history book.
@@ -225,10 +240,18 @@ def collect_plates(
             log.debug("page %s unusable: %s", candidate.page_id, exc)
             continue
 
-        # Cheap and local, so it runs before spending a vision call.
+        # Cheap and local, so these run before spending a vision call.
         blends, why = blends_with_paper(img)
         if not blends:
             log.debug("page %s rejected: %s", candidate.page_id, why)
+            continue
+
+        coverage = ink_coverage(img)
+        if coverage < MIN_INK_COVERAGE:
+            log.debug(
+                "page %s rejected: only %.1f%% ink, reads as blank at tile size",
+                candidate.page_id, coverage * 100,
+            )
             continue
 
         if vision_client is not None:
