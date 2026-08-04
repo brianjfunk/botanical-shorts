@@ -77,6 +77,7 @@ def select_and_build(
         # candidate budget, and the window rotates as the channel grows.
         skip_pages=history.page_ids,
         skip_items=history.item_ids,
+        skip_titles=history.recent_title_ids(cfg.source.title_cooldown),
         title_offset=len(history.entries),
     )
 
@@ -295,6 +296,8 @@ def _run_once(
         {
             "page_id": result.summary["page_id"],
             "item_id": result.summary["item_id"],
+            # Recorded so the cooldown can see which work this came from.
+            "title_id": result.summary["title_id"],
             "title": result.summary["title"],
             "video_id": upload.video_id,
             "publish_at": upload.publish_at,

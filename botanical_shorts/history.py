@@ -48,6 +48,23 @@ class History:
     def has_page(self, page_id: str) -> bool:
         return str(page_id) in self._page_ids
 
+    def recent_title_ids(self, cooldown: int) -> set[str]:
+        """Works featured within the last ``cooldown`` published videos.
+
+        Deliberately a *window*, not the whole history. Two plates from one
+        serial are a problem when they land near each other in the feed and
+        unremarkable months apart, so the rule has to expire. A permanent ban
+        would also retire the richest sources -- Edwards's Botanical Register
+        alone spans 1829-1847 -- after a single use.
+
+        Entries recorded before title_id was tracked contribute nothing; run
+        ``backfill-history`` to resolve them.
+        """
+        if cooldown <= 0:
+            return set()
+        window = self.entries[-cooldown:]
+        return {str(e["title_id"]) for e in window if e.get("title_id")}
+
     def has_item(self, item_id: str) -> bool:
         """Whether we've already published *any* plate from this volume.
 

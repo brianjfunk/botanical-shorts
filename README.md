@@ -150,6 +150,17 @@ actually return, and exits non-zero listing anything unresolved — add the real
 key names to `FIELD_ALIASES` if so. **Do this before the first real run**; it's
 the one place where a wrong guess would quietly degrade selection.
 
+It also checks that **every** configured subject returns title-level
+publications, and fails if any returns none. This is a separate gate from the
+field-name checks for a reason: BHL answers an unknown subject exactly as it
+answers a real but sparse one — HTTP 200 with an empty list. Two headings that
+did not exist sat in `source.subjects` contributing nothing, and no field-name
+check could have noticed. Find real headings with:
+
+```bash
+BHL_API_KEY=... python -m botanical_shorts.cli find-subjects botany herbal
+```
+
 Subject discovery goes through `GetSubjectMetadata(subject=…, pubs=t)`.
 `PublicationSearchAdvanced` is not usable here: it requires a title, author or
 collection id and rejects a subject on its own. The publications it returns mix
@@ -180,7 +191,13 @@ Two things govern how many videos can actually appear:
 
 * **The plate pool is finite.** Every published plate is retired from it
   permanently, and the quality gates retire many more unpublished. Five a week
-  rather than seven is a deliberate concession to that.
+  rather than seven is a deliberate concession to that. Run
+  `pool-survey` to measure it; as of the last survey it was ~1360 usable
+  plates across 257 distinct works.
+* **Works go on cooldown.** `source.title_cooldown` locks a work for that many
+  published videos, so two plates from one long-running serial cannot land near
+  each other. Its ceiling is the distinct-title count, not the plate count:
+  a serial contributes thousands of plates but one title.
 * **YouTube caps uploads per day.** The seeding batch hit
   `uploadLimitExceeded` at video 19. Deleting videos does not refund the
   allowance -- it counts upload attempts, not videos currently on the channel.

@@ -59,7 +59,37 @@ def cmd_verify_bhl(args: argparse.Namespace) -> int:
     client = bhl.BHLClient(require_env("BHL_API_KEY"))
     subject = args.subject or cfg.source.subjects[0]
 
-    print(f"== GetSubjectMetadata(subject={subject!r}, pubs=t)")
+    # Every configured subject, not just the probed one. Two headings sat in
+    # config returning zero title-level publications and nothing failed,
+    # because BHL answers an unknown subject exactly as it answers a real but
+    # thin one: HTTP 200 and an empty list. Field-name checks could never have
+    # caught that, which is why this is its own gate.
+    print("== Configured subjects")
+    empty_subjects: list[str] = []
+    for name in cfg.source.subjects:
+        try:
+            count = len(client.subject_titles(name))
+        except Exception as exc:
+            print(f"   [err ] {name!r}: {exc}")
+            empty_subjects.append(name)
+            continue
+        if count:
+            print(f"   [ok  ] {count:5} titles  {name!r}")
+        else:
+            print(f"   [DEAD]     0 titles  {name!r}")
+            empty_subjects.append(name)
+
+    if empty_subjects:
+        print(
+            f"\n   {len(empty_subjects)} subject(s) return nothing: "
+            f"{', '.join(repr(s) for s in empty_subjects)}."
+            "\n   These contribute no plates at all. Find real headings with:"
+            "\n     python -m botanical_shorts.cli find-subjects <term>",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"\n== GetSubjectMetadata(subject={subject!r}, pubs=t)")
     subject_meta = client.get_subject_metadata(subject, pubs=True)
     if not subject_meta:
         print(f"   subject {subject!r} not found in BHL", file=sys.stderr)
@@ -203,6 +233,139 @@ def cmd_check_youtube(args: argparse.Namespace) -> int:
             print(f"   lookup failed: {exc}")
 
     print("\n   Refresh token is valid. Nothing was uploaded.")
+    return 0
+
+
+def cmd_find_subjects(args: argparse.Namespace) -> int:
+    """Search BHL for subject headings that actually carry titles.
+
+    Two of the three configured subjects returned zero title-level
+    publications, so the channel had been running on one subject without
+    anything failing loudly -- a heading that does not exist looks exactly like
+    one that is merely thin. This searches for real headings and reports how
+    many titles each carries, so `source.subjects` can be set from evidence.
+    """
+    cfg = load_config(args.config)
+    client = bhl.BHLClient(require_env("BHL_API_KEY"))
+
+    # The published API reference was not reachable when this was written, so
+    # the op name and its parameter are both guesses. SubjectSearch+searchterm
+    # returned an empty Result for every term -- including "botany" -- which is
+    # what a wrong op or wrong parameter name looks like, since a genuinely
+    # empty search would still be odd for so broad a word. Try the plausible
+    # spellings and report which one actually answers.
+    # Confirmed against the live API: the parameter is `subject`, not
+    # `searchterm`. With `searchterm` the call succeeds and returns an empty
+    # Result -- indistinguishable from a search that genuinely found nothing,
+    # which is why two dead subjects sat in config unnoticed. The other
+    # spellings are kept as fallbacks in case the API changes.
+    ops = [
+        ("SubjectSearch", "subject"),
+        ("SubjectSearch", "searchterm"),
+        ("GetSubjects", None),
+    ]
+
+    def _probe(term: str) -> list[str]:
+        for op, param in ops:
+            kwargs = {param: term} if param else {}
+            try:
+                result = client.call(op, **kwargs)
+            except Exception as exc:
+                print(f"   {op}({param or ''}) -> error: {str(exc)[:70]}")
+                continue
+            records = bhl._as_list(result)
+            if not records:
+                print(f"   {op}({param or ''}) -> empty")
+                continue
+            print(f"   {op}({param or ''}) -> {len(records)} records")
+            if args.raw:
+                print(f"      record keys: {sorted(records[0].keys())}")
+                print(f"      first: {str(records[0])[:200]}")
+            names = []
+            for rec in records:
+                name = str(
+                    rec.get("SubjectText")
+                    or rec.get("Subject")
+                    or rec.get("Name")
+                    or rec.get("Title")
+                    or ""
+                ).strip()
+                if name:
+                    names.append(name)
+            if names:
+                return names
+        return []
+
+    found: dict[str, int] = {}
+    for term in args.terms:
+        print(f"\n== searching {term!r}")
+        names = _probe(term)
+        print(f"   {len(names)} headings returned")
+
+        for name in names[: args.per_term]:
+            if name in found:
+                continue
+            try:
+                titles = client.subject_titles(name)
+            except Exception as exc:
+                print(f"   [err ] {name[:60]}: {exc}")
+                continue
+            found[name] = len(titles)
+            flag = "ok  " if titles else "EMPTY"
+            print(f"   [{flag}] {len(titles):4} titles  {name[:60]}")
+
+    usable = {k: v for k, v in found.items() if v > 0}
+    print(f"\n== {len(usable)} headings carry titles, of {len(found)} probed")
+    for name, count in sorted(usable.items(), key=lambda kv: -kv[1])[:25]:
+        print(f"   {count:4}  {name}")
+
+    configured = set(cfg.source.subjects)
+    dead = [s for s in configured if found.get(s, 0) == 0 and s in found]
+    if dead:
+        print(f"\n   Configured but empty: {', '.join(dead)}")
+    return 0
+
+
+def cmd_backfill_history(args: argparse.Namespace) -> int:
+    """Fill in title_id for history entries recorded before it was tracked.
+
+    The cooldown works off title_id, so entries without one are invisible to
+    it -- the 19 already-published plates would not lock their works. Resolves
+    each page to its title and rewrites the file.
+    """
+    from .history import History
+
+    cfg = load_config(args.config)
+    client = bhl.BHLClient(require_env("BHL_API_KEY"))
+    history = History(cfg.history_path)
+
+    missing = [e for e in history.entries if not e.get("title_id")]
+    print(f"{len(missing)} of {len(history.entries)} entries need a title_id")
+
+    for entry in missing:
+        page_id = str(entry.get("page_id") or "")
+        if not page_id:
+            continue
+        try:
+            page = client.get_page_metadata(page_id)
+            item_id = str(bhl.pick(page, "item_id") or entry.get("item_id") or "")
+            item = client.get_item_metadata(item_id, pages=False) if item_id else {}
+            title_id = str(bhl.pick(item, "title_id") or "")
+        except Exception as exc:
+            print(f"   page {page_id}: lookup failed ({exc})")
+            continue
+        if title_id:
+            entry["title_id"] = title_id
+            print(f"   page {page_id} -> title {title_id}")
+        else:
+            print(f"   page {page_id}: no title_id resolved")
+
+    if args.dry_run:
+        print("\ndry run; history not written")
+        return 0
+
+    history.save()
+    print(f"\nwrote {cfg.history_path}")
     return 0
 
 
@@ -462,6 +625,16 @@ def main(argv: list[str] | None = None) -> int:
         "--video-id", help="also report which channel this video landed on and its state"
     )
     p_check.set_defaults(func=cmd_check_youtube)
+
+    p_find = sub.add_parser("find-subjects", help="search BHL for subject headings that carry titles")
+    p_find.add_argument("terms", nargs="+", help="search terms to probe")
+    p_find.add_argument("--per-term", type=int, default=8, help="headings to test per term")
+    p_find.add_argument("--raw", action="store_true", help="dump raw record keys for diagnosis")
+    p_find.set_defaults(func=cmd_find_subjects)
+
+    p_back = sub.add_parser("backfill-history", help="resolve title_id for older history entries")
+    p_back.add_argument("--dry-run", action="store_true", help="report without writing")
+    p_back.set_defaults(func=cmd_backfill_history)
 
     p_pool = sub.add_parser("pool-survey", help="measure how deep the usable plate pool is")
     p_pool.add_argument("--limit", type=int, default=1500, help="candidates to walk")

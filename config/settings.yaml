@@ -10,10 +10,18 @@ source:
   #   - "Zoological illustration"
   #   - "Entomology"
   #   - "Birds"
+  # Confirmed live via `find-subjects`. "Botany, Pictorial works" and "Plants
+  # Pictorial works" were removed: both returned ZERO title-level publications,
+  # so the channel had been running on one subject the whole time. Nothing
+  # failed loudly, because a heading that does not exist looks exactly like one
+  # that is merely thin -- check any new subject with `find-subjects` first.
+  #
+  # Title counts as measured:
+  #   botany                 5990
+  #   Botanical illustration  152
   subjects:
     - "Botanical illustration"
-    - "Botany, Pictorial works"
-    - "Plants Pictorial works"
+    - "botany"
 
   # BHL flags page types per scanned page. "Illustration" is the plate marker;
   # run `verify-bhl` to confirm the exact strings your queries return.
@@ -26,13 +34,31 @@ source:
   year_min: 1700
   year_max: 1920
 
-  # 'Botanical illustration' alone returns 152 title-level works; the old
-  # window of 12 was a small fraction of the available pool.
-  titles_per_subject: 60
+  # How many titles per subject the walk may consider. This is the real limit
+  # on pool depth: 'botany' offers 5988 titles, but at 60 the walk only ever
+  # saw 120 of them, which is why raising the subject count alone changed
+  # nothing measurable.
+  #
+  # Raising it is close to free. The walk is lazy and stops at the first
+  # publishable plate, and a title on cooldown is skipped before its metadata
+  # call -- so a bigger window costs API calls only when the leading titles
+  # yield nothing.
+  titles_per_subject: 400
   max_items_per_title: 3
   # Cap per volume so one heavily-illustrated book cannot dominate the pool.
   max_pages_per_item: 6
   max_candidates: 400
+  # Works stay locked for this many published videos: 120 is about 5.5 months
+  # at five a week.
+  #
+  # Bounded by distinct usable titles, which a survey put at 257 once
+  # titles_per_subject reached 400. Deliberately under half of that rather than
+  # the 130 a full six months would need, because the two failure directions
+  # are not symmetric: too short means an occasional near-repeat, which is
+  # survivable and which Brian judged acceptable months apart. Too long means
+  # the walk finds no unlocked work, the run publishes nothing, and the channel
+  # silently goes quiet.
+  title_cooldown: 120
 
 license:
   # Allowlist, matched case-insensitively as substrings against BHL's
@@ -87,7 +113,10 @@ image:
   # A scan whose own edge is dark -- a black scan frame, a dark mount, a
   # photograph shot against cloth -- makes sampled_paper fall back to
   # parchment, leaving a hard rectangle on a parchment field.
-  min_border_luminance: 140
+  # 140 was set to catch scanner void (which reads 0-6) but was also rejecting
+  # ordinary dark or browned stock at 70-120, costing about a quarter of the
+  # pool. 60 still clears a black frame by a wide margin.
+  min_border_luminance: 60
   # A faint pencil study is a clean scan, so scan_quality rates it highly, and
   # it still frames as an empty page.
   min_ink_coverage: 0.05

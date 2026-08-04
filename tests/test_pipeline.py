@@ -950,8 +950,12 @@ def _paper(w=1200, h=1500, tone=(232, 222, 201)):
 
 def test_shipped_config_carries_the_ported_gates():
     cfg = load_config()
-    assert cfg.image.min_border_luminance == 140
+    # 60, not the original 140: a pool survey showed 140 rejecting ordinary
+    # dark and browned stock at 70-120, not just the scanner void at 0-6 the
+    # check was built for. It cost roughly a quarter of the usable pool.
+    assert cfg.image.min_border_luminance == 60
     assert cfg.image.min_ink_coverage == 0.05
+    assert cfg.source.title_cooldown == 120
 
 
 def test_black_framed_scan_is_rejected_before_framing():
@@ -1022,3 +1026,136 @@ def test_spread_verdict_rejects_that_page():
         verdict(is_spread=True), min_quality=7, caption_mode="log_only"
     )
     assert not ok and "two facing pages" in reason
+
+
+# -- title cooldown ----------------------------------------------------------
+#
+# Two plates from Edwards's Botanical Register (title 383) reached the channel
+# in one batch and looked like the same drawing. They were different pages in
+# different volumes, so neither the page nor the item rule could see the
+# repeat: the serial ran 1829-1847 and reissued engravings across volumes.
+
+def test_cooldown_is_a_window_not_the_whole_history(tmp_path):
+    h = History(tmp_path / "h.json")
+    for i in range(10):
+        h.record({"page_id": str(i), "item_id": str(i), "title_id": str(i)})
+    recent = h.recent_title_ids(3)
+    assert recent == {"7", "8", "9"}, "only the last N entries lock their works"
+
+
+def test_cooldown_expires_so_a_serial_returns(tmp_path):
+    """A permanent ban would retire the richest sources after one use."""
+    h = History(tmp_path / "h.json")
+    h.record({"page_id": "1", "item_id": "1", "title_id": "383"})
+    for i in range(2, 8):
+        h.record({"page_id": str(i), "item_id": str(i), "title_id": str(i)})
+    assert "383" not in h.recent_title_ids(3)
+    assert "383" in h.recent_title_ids(10)
+
+
+def test_cooldown_of_zero_locks_nothing(tmp_path):
+    h = History(tmp_path / "h.json")
+    h.record({"page_id": "1", "item_id": "1", "title_id": "383"})
+    assert h.recent_title_ids(0) == set()
+
+
+def test_entries_without_title_id_are_ignored(tmp_path):
+    """History written before title_id was tracked must not crash the rule."""
+    h = History(tmp_path / "h.json")
+    h.record({"page_id": "1", "item_id": "1"})
+    h.record({"page_id": "2", "item_id": "2", "title_id": "383"})
+    assert h.recent_title_ids(5) == {"383"}
+
+
+def test_walk_skips_a_cooling_title_without_spending_the_budget():
+    """The lupine case: a locked work must not consume `limit`.
+
+    If it did, a run whose window filled with cooling titles would surface no
+    new plate at all -- the same exhaustion trap the page and item skips avoid.
+    """
+    calls = {"title_meta": 0}
+
+    class Client:
+        def subject_titles(self, subject):
+            return [{"TitleID": "383"}, {"TitleID": "999"}]
+
+        def get_title_metadata(self, title_id, items=True):
+            calls["title_meta"] += 1
+            return {
+                "FullTitle": f"Work {title_id}",
+                "Year": "1830",
+                "Items": [{"ItemID": f"i{title_id}"}],
+            }
+
+        def get_item_metadata(self, item_id, pages=True):
+            return {
+                "RightsStatus": "Public domain",
+                "Pages": [{"PageID": f"p{item_id}", "PageTypes": ["Illustration"]}],
+            }
+
+    got = list(
+        bhl.iter_candidates(
+            Client(),
+            subjects=["s"],
+            page_types=["Illustration"],
+            year_min=1700,
+            year_max=1920,
+            titles_per_subject=10,
+            max_items_per_title=2,
+            max_pages_per_item=2,
+            limit=5,
+            skip_titles=["383"],
+        )
+    )
+    assert [c.title_id for c in got] == ["999"]
+    assert calls["title_meta"] == 1, "a cooling title must be skipped before its metadata call"
+
+
+def test_configured_subjects_exclude_the_dead_headings():
+    """'Botany, Pictorial works' and 'Plants Pictorial works' returned zero
+    title-level publications against the live API, so the channel ran on one
+    subject without anything failing. A non-existent heading is
+    indistinguishable from a thin one, so the only defence is not shipping
+    headings that were never verified -- see the subject check in verify-bhl,
+    which now fails loudly on an empty one."""
+    subjects = load_config().source.subjects
+    assert "Botany, Pictorial works" not in subjects
+    assert "Plants Pictorial works" not in subjects
+    assert "botany" in subjects
+
+
+def test_verify_bhl_reports_a_dead_subject(capsys):
+    """The check that would have caught the two dead headings.
+
+    BHL answers an unknown subject the same way it answers a sparse one, so
+    this has to assert on the *count*, not on the call succeeding.
+    """
+    import argparse
+
+    # cli imports the pipeline, which imports youtube and so google-auth.
+    # Skip rather than fail where the runtime deps are not installed.
+    pytest.importorskip("google.auth")
+    from botanical_shorts import cli
+
+    class Client:
+        def __init__(self, *a, **k):
+            pass
+
+        def subject_titles(self, subject):
+            return [{"TitleID": "1"}] if subject == "botany" else []
+
+    real_client, real_cfg = bhl.BHLClient, cli.load_config
+    cfg = load_config()
+    object.__setattr__(cfg.source, "subjects", ["botany", "made up heading"])
+    bhl.BHLClient = Client
+    cli.load_config = lambda *_a, **_k: cfg
+    os.environ.setdefault("BHL_API_KEY", "test")
+    try:
+        rc = cli.cmd_verify_bhl(argparse.Namespace(config=None, subject=None))
+    finally:
+        bhl.BHLClient, cli.load_config = real_client, real_cfg
+
+    out = capsys.readouterr()
+    assert rc == 1
+    assert "DEAD" in out.out
+    assert "made up heading" in out.err
