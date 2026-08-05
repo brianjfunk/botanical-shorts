@@ -25,7 +25,13 @@ from googleapiclient.http import MediaFileUpload
 
 log = logging.getLogger(__name__)
 
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+# Informational only -- Google enforces whatever the refresh token was granted,
+# not what is listed here. Kept in step with scripts/get_youtube_refresh_token.py
+# so the two do not drift and mislead.
+SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube",
+]
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 
@@ -57,12 +63,14 @@ def build_credentials(client_id: str, client_secret: str, refresh_token: str) ->
         if "invalid_grant" in detail:
             hint = (
                 "the refresh token is no longer valid. In order of likelihood:\n"
-                "  1. You re-ran the consent flow but did not paste the NEW token "
-                "into the YOUTUBE_REFRESH_TOKEN secret. Re-consenting revokes the "
-                "previous token, so the stored one stops working the moment a new "
-                "one is minted -- completing the browser flow is not enough.\n"
-                "  2. The grant was revoked at "
-                "https://myaccount.google.com/permissions.\n"
+                "  1. The grant was revoked at "
+                "https://myaccount.google.com/permissions. Revoking kills every "
+                "token issued under it, including one you have just minted but "
+                "not yet pasted into the secret -- do not revoke as part of "
+                "re-consenting.\n"
+                "  2. You re-ran the consent flow but did not paste the new "
+                "token into the YOUTUBE_REFRESH_TOKEN secret. Completing the "
+                "browser flow does not update it.\n"
                 "  3. The OAuth app is still in Testing mode, whose tokens expire "
                 "after ~7 days; publish it to Production."
             )
