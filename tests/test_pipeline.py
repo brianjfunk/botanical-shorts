@@ -2027,11 +2027,23 @@ def test_the_max_tokens_ceiling_leaves_room_for_the_whole_verdict():
 # survivable. One walk, no early stop, and ordering becomes a decision over the
 # resulting set rather than exclusion rules applied one plate at a time.
 
+def _distinct_plate(n, w=900, h=1200):
+    """A plate that no other n produces. Real plates differ; stub plates built
+    from one constant do not, and the duplicate gate is right to say so."""
+    img = Image.new("RGB", (w, h), (232, 222, 201))
+    x0 = 60 + (n % 4) * 90
+    y0 = 80 + (n % 3) * 130
+    for x in range(x0, min(w - 40, x0 + 260 + (n % 5) * 60)):
+        for y in range(y0, min(h - 60, y0 + 500 + (n % 3) * 90)):
+            img.putpixel((x, y), (30 + (n * 17) % 60, 34, 38))
+    return img
+
+
 def test_harvest_keeps_going_past_the_first_good_plate(tmp_path, monkeypatch):
     from botanical_shorts import harvest as h
 
     works = [{"title_id": f"T{i}", "item_id": f"I{i}", "page_ids": [f"p{i}"]} for i in range(5)]
-    plates = {f"p{i}": make_plate(900, 1200) for i in range(5)}
+    plates = {f"p{i}": _distinct_plate(i) for i in range(5)}
     _install_stub_pool(monkeypatch, works, plates, None)
     cfg = _no_vision(_cfg_for_stub(history_path=tmp_path / "h.json"))
 
@@ -2051,7 +2063,7 @@ def test_harvest_takes_several_plates_from_one_volume(tmp_path, monkeypatch):
     from botanical_shorts import harvest as h
 
     works = [{"title_id": "T1", "item_id": "I1", "page_ids": [f"p{i}" for i in range(5)]}]
-    plates = {f"p{i}": make_plate(900, 1200) for i in range(5)}
+    plates = {f"p{i}": _distinct_plate(i) for i in range(5)}
     _install_stub_pool(monkeypatch, works, plates, None)
     cfg = _no_vision(_cfg_for_stub(history_path=tmp_path / "h.json"))
 
@@ -2094,3 +2106,77 @@ def test_publish_order_is_random_but_reproducible_with_a_seed():
     c = [e["page_id"] for e in publish_order(entries, seed=8)]
     assert a == b
     assert a != c, "different seeds must give different orders"
+
+
+# -- near-duplicate plates ---------------------------------------------------
+#
+# Brian, after reviewing 101 plates: "a bit of a memory/matching game to look
+# for duplicates manually... I found a couple repeats that looked like the same
+# illustration with slightly different hue from scanning or printing variation."
+# Page and volume ids cannot see that -- a serial reissued the engraving in a
+# different volume, so the ids genuinely differ.
+
+def _tinted(img, factor, shift):
+    """The same plate as a different scan: hue shifted, brightness changed."""
+    out = img.copy().convert("RGB")
+    px = out.load()
+    for y in range(out.height):
+        for x in range(out.width):
+            r, g, b = px[x, y]
+            px[x, y] = (
+                min(255, int(r * factor) + shift),
+                min(255, int(g * factor)),
+                min(255, int(b * factor) + shift // 2),
+            )
+    return out
+
+
+def test_a_rescan_of_the_same_plate_hashes_almost_identically():
+    original = make_plate(600, 800)
+    rescan = _tinted(original, 0.88, 26)
+
+    d = imaging.hash_distance(
+        imaging.perceptual_hash(original), imaging.perceptual_hash(rescan)
+    )
+    assert d <= 18, f"a hue-shifted rescan should stay close, got {d} bits"
+
+
+def test_different_plates_are_far_apart():
+    a = make_plate(600, 800)
+    b = Image.new("RGB", (600, 800), (232, 222, 201))
+    for x in range(60, 300):
+        for y in range(400, 760):
+            b.putpixel((x, y), (40, 40, 40))
+
+    d = imaging.hash_distance(imaging.perceptual_hash(a), imaging.perceptual_hash(b))
+    assert d > 18, f"different plates must not collide, got {d} bits"
+
+
+def test_harvest_drops_the_second_copy_of_one_illustration(tmp_path, monkeypatch):
+    from botanical_shorts import harvest as h
+
+    original = make_plate(900, 1200)
+    works = [
+        {"title_id": "T1", "item_id": "I1", "page_ids": ["first"]},
+        # A different volume of the same serial, reissuing the engraving.
+        {"title_id": "T2", "item_id": "I2", "page_ids": ["reissue"]},
+        {"title_id": "T3", "item_id": "I3", "page_ids": ["other"]},
+    ]
+    other = Image.new("RGB", (900, 1200), (232, 222, 201))
+    for x in range(100, 500):
+        for y in range(600, 1150):
+            other.putpixel((x, y), (35, 35, 35))
+    plates = {
+        "first": original,
+        "reissue": _tinted(original, 0.9, 22),
+        "other": other,
+    }
+    _install_stub_pool(monkeypatch, works, plates, None)
+    cfg = _no_vision(_cfg_for_stub(history_path=tmp_path / "h.json"))
+
+    result = h.harvest(cfg, limit=50)
+    kept = [e["page_id"] for e in result.entries]
+
+    assert "first" in kept and "other" in kept
+    assert "reissue" not in kept
+    assert any(r.stage == "duplicate" for r in result.rejections)

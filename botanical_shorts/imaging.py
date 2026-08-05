@@ -169,6 +169,33 @@ def frame_vertical(
     )
 
 
+def perceptual_hash(img: Image.Image, side: int = 16) -> int:
+    """A hash of what the plate *looks like*, not of its bytes.
+
+    Difference hash: shrink to a small grey grid and record, for each pixel,
+    whether it is darker than the one to its right. Only those comparisons
+    survive, which is what makes it useful here -- the same engraving rescanned
+    or reprinted differs in hue, brightness and paper tone while its light-dark
+    structure is almost unchanged, so the two hashes stay within a few bits of
+    each other. Byte equality or a colour histogram would miss it entirely.
+
+    That is precisely the case Brian found by eye and called a memory game: two
+    plates of the same illustration differing only in scanning or printing hue.
+    """
+    grid = img.convert("L").resize((side + 1, side), Image.LANCZOS)
+    px = grid.load()
+    bits = 0
+    for y in range(side):
+        for x in range(side):
+            bits = (bits << 1) | int(px[x, y] > px[x + 1, y])
+    return bits
+
+
+def hash_distance(a: int, b: int) -> int:
+    """How many bits two perceptual hashes differ by."""
+    return bin(a ^ b).count("1")
+
+
 def find_gutter(img: Image.Image, search_ratio: float = 0.16) -> int:
     """Locate the fold between two facing pages, as an x coordinate.
 

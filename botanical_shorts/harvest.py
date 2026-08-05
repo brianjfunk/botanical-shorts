@@ -38,6 +38,15 @@ from .pipeline import MAX_TITLE_STRIKES, MAX_VISION_ERRORS, Rejection, check_ima
 log = logging.getLogger(__name__)
 
 
+# How many bits of a 256-bit perceptual hash two plates may differ by and still
+# count as the same illustration. Rescans of one engraving land in the low
+# teens; genuinely different plates from the same book, drawn in the same style
+# by the same hand, sit far above it. Deliberately tight -- a false match hides
+# a good plate, and Brian can still catch a near-repeat by eye, which is the
+# failure direction that already works.
+DUPLICATE_DISTANCE = 18
+
+
 @dataclass
 class HarvestResult:
     entries: list[dict[str, Any]] = field(default_factory=list)
@@ -199,6 +208,32 @@ def harvest(
                     "illustration_side": seen.illustration_side,
                 }
             )
+        # Looked at last, because it needs the framed plate. Comparing against
+        # everything kept so far catches the case Brian found by eye: the same
+        # engraving reissued across volumes, differing only in scanning or
+        # printing hue, which page and volume ids cannot see and which is
+        # genuinely hard to spot on a page of a hundred thumbnails.
+        phash = imaging.perceptual_hash(framed.image)
+        twin = next(
+            (
+                kept
+                for kept in result.entries
+                if imaging.hash_distance(phash, kept["phash"]) <= DUPLICATE_DISTANCE
+            ),
+            None,
+        )
+        if twin is not None:
+            result.rejections.append(
+                Rejection(
+                    page_id,
+                    "duplicate",
+                    f"same illustration as page {twin['page_id']} "
+                    f"({imaging.hash_distance(phash, twin['phash'])} bits apart)",
+                )
+            )
+            continue
+        entry["phash"] = phash
+
         result.entries.append(entry)
         result.images.append(framed.image)
         log.info("kept %s: %s", page_id, entry["title"][:70])
