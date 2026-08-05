@@ -386,6 +386,38 @@ def publish_order(entries: list[dict[str, Any]], *, seed: int | None = None) -> 
     return _spread(category_piles, cat_of)
 
 
+def frame_entry(
+    cfg: Config,
+    entry: dict[str, Any],
+    session: requests.Session | None = None,
+) -> Image.Image:
+    """Rebuild the framed plate for a stored queue entry.
+
+    The queue keeps metadata, not pixels: the same page and the same stored
+    verdict always yield the same frame, so re-deriving costs one download
+    where carrying it would cost a megabyte per plate in the repository. Used
+    by the review page, which must be able to show plates harvested by an
+    earlier run whose images are long gone.
+    """
+    cand = bhl.PageCandidate(**{
+        k: v for k, v in entry["candidate"].items()
+        if k in bhl.PageCandidate.__dataclass_fields__
+    })
+    img = imaging.load_image(bhl.download_page_image(cand, session=session))
+    if entry.get("illustration_side") in {"left", "right"}:
+        img = imaging.split_spread(img, entry["illustration_side"])
+    return imaging.frame_vertical(
+        img,
+        width=cfg.image.width,
+        height=cfg.image.height,
+        margin_ratio=cfg.image.margin_ratio,
+        letterbox=cfg.image.letterbox,
+        fixed_fill_color=cfg.image.fixed_fill_color,
+        border_px=cfg.image.border_px,
+        border_color=cfg.image.border_color,
+    ).image
+
+
 def publish_from_queue(
     cfg: Config,
     entries: list[dict[str, Any]],

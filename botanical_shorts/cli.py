@@ -609,6 +609,10 @@ def _queue_path(cfg) -> Path:
     return cfg.history_path.parent / "queue.json"
 
 
+def _review_order_path(cfg) -> Path:
+    return cfg.history_path.parent / "review_order.json"
+
+
 def cmd_harvest(args: argparse.Namespace) -> int:
     """Walk the pool once, judge everything, and render the queue for review.
 
@@ -641,28 +645,38 @@ def cmd_harvest(args: argparse.Namespace) -> int:
     added = q.add(result.entries)
     q.save()
 
-    # The page shows only what this harvest added, numbered from one, which is
-    # what the reply refers to.
-    pending = q.with_status("pending")
-    by_page = {str(e["page_id"]): i for i, e in enumerate(result.entries)}
-    images = [
-        result.images[by_page[str(e["page_id"])]]
-        for e in pending
-        if str(e["page_id"]) in by_page
-    ]
-    shown = [e for e in pending if str(e["page_id"]) in by_page]
+    # Every pending plate, not just this harvest's. A second harvest used to
+    # leave the page showing its own additions while approve numbered the whole
+    # pending list, so the reply pointed at the wrong plates entirely. Images
+    # for earlier harvests are re-derived, which costs one download each and
+    # keeps the page and the reply describing the same thing.
+    import requests as _requests
+
+    session = _requests.Session()
+    fresh = {str(e["page_id"]): img for e, img in zip(result.entries, result.images)}
+    shown, images = [], []
+    for entry in q.with_status("pending"):
+        page_id = str(entry["page_id"])
+        try:
+            images.append(fresh[page_id] if page_id in fresh else harvest_mod.frame_entry(cfg, entry, session))
+        except Exception as exc:
+            log.warning("could not rebuild page %s for review: %s", page_id, exc)
+            continue
+        shown.append(entry)
 
     out = Path(args.out or "review")
     out.mkdir(parents=True, exist_ok=True)
     (out / "review.html").write_text(review.render(shown, images))
+    # The exact order the page numbered, so the reply can be resolved to plates
+    # rather than to positions in a list that may have changed since.
+    _review_order_path(cfg).write_text(
+        json.dumps([str(e["page_id"]) for e in shown], indent=2)
+    )
 
-    import collections as _c
-
-    by_cat = _c.Counter(str(e.get("category") or "?") for e in result.entries)
     print(f"\nharvested {added} new plates ({result.vision_calls} vision calls)")
     for name, n in by_cat.most_common():
         print(f"   {n:4}  {name}")
-    print(f"   review page -> {out / 'review.html'}")
+    print(f"   review page shows {len(shown)} pending -> {out / 'review.html'}")
     print(f"   queue now: {q.counts()}")
     return 0
 
@@ -679,22 +693,35 @@ def cmd_approve(args: argparse.Namespace) -> int:
         print("nothing is awaiting review", file=sys.stderr)
         return 1
 
+    # The order the review page actually numbered. Falling back to the pending
+    # order would reintroduce exactly the bug this file records: a later
+    # harvest shifts every index, and the reply retires the wrong plates.
+    order_path = _review_order_path(cfg)
+    if not order_path.exists():
+        print(
+            f"no review order at {order_path}; run a harvest to render the page first",
+            file=sys.stderr,
+        )
+        return 1
+    shown_pages: list[str] = json.loads(order_path.read_text())
+
     try:
         rejected_idx = parse_review_reply(args.decision)
     except ValueError as exc:
         print(f"could not read that reply: {exc}", file=sys.stderr)
         return 2
 
-    out_of_range = [i + 1 for i in rejected_idx if i >= len(pending)]
+    out_of_range = [i + 1 for i in rejected_idx if i >= len(shown_pages)]
     if out_of_range:
         print(
-            f"the page showed {len(pending)} plates; {out_of_range} is out of range",
+            f"the page showed {len(shown_pages)} plates; {out_of_range} is out of range",
             file=sys.stderr,
         )
         return 2
 
-    rejects = [e for i, e in enumerate(pending) if i in rejected_idx]
-    keepers = [e for i, e in enumerate(pending) if i not in rejected_idx]
+    rejected_pages = {shown_pages[i] for i in rejected_idx}
+    rejects = [e for e in pending if str(e["page_id"]) in rejected_pages]
+    keepers = [e for e in pending if str(e["page_id"]) not in rejected_pages]
 
     # Retired before anything else touches the queue: a rejected plate must
     # never be offered again even if the rest of this command fails.
@@ -702,7 +729,7 @@ def cmd_approve(args: argparse.Namespace) -> int:
         harvest_mod.retire(cfg, rejects)
 
     order = harvest_mod.publish_order(q.with_status(APPROVED) + keepers, seed=args.seed)
-    approved, rejected = q.resolve(rejected_idx, order=order)
+    approved, rejected = q.resolve(rejected_pages, order=order)
     q.save()
 
     print(f"approved {len(keepers)}, rejected {rejected}")

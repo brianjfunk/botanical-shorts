@@ -2502,3 +2502,59 @@ def test_harvest_can_top_up_named_categories_only(tmp_path, monkeypatch):
 
     h.harvest_all(cfg, per_category=10, only=["B", "C"])
     assert walked == ["B", "C"]
+
+
+# -- the review page and the reply must describe the same plates -------------
+#
+# The page rendered only what the newest harvest had added, while approve
+# numbered the whole pending list. After a second harvest those two lists
+# differed, so "reject 5" would have retired a plate five rows into a list
+# nobody had looked at. Caught before any reply was sent against it.
+
+def test_rejections_are_keyed_by_page_not_by_position(tmp_path):
+    from botanical_shorts.queue import Queue
+
+    q = Queue(tmp_path / "q.json")
+    q.add([{"page_id": p, "title_id": "T"} for p in ("old1", "old2", "new1", "new2")])
+
+    # The page showed only the two newest, in this order.
+    shown = ["new1", "new2"]
+    rejected_pages = {shown[1]}  # the reply said "reject 2"
+
+    q.resolve(rejected_pages, order=[e for e in q.entries if e["page_id"] != "new2"])
+    by_page = {e["page_id"]: e["status"] for e in q.entries}
+
+    assert by_page["new2"] == "rejected"
+    # Position 2 in the full pending list is old2, which must be untouched.
+    assert by_page["old2"] == "approved"
+
+
+def test_the_review_page_covers_everything_pending(tmp_path, monkeypatch):
+    """A plate harvested last week and never reviewed must still appear."""
+    from botanical_shorts import harvest as h
+    from botanical_shorts.queue import Queue
+
+    q = Queue(tmp_path / "q.json")
+    q.add([
+        {
+            "page_id": "older",
+            "title_id": "T",
+            "title": "From an earlier harvest",
+            "candidate": {
+                "page_id": "older", "item_id": "I", "title_id": "T", "title": "W",
+                "year": "1850", "publisher": "", "authors": [],
+                "page_types": ["Illustration"], "rights": "Public domain",
+                "license_name": "", "license_url": "", "source": "",
+            },
+        }
+    ])
+    q.save()
+
+    monkeypatch.setattr(
+        h.bhl, "download_page_image", lambda c, session=None, timeout=90: b"x"
+    )
+    monkeypatch.setattr(h.imaging, "load_image", lambda d: make_plate(900, 1200))
+
+    cfg = _cfg_for_stub(history_path=tmp_path / "h.json")
+    rebuilt = h.frame_entry(cfg, q.entries[0])
+    assert rebuilt.size == (cfg.image.width, cfg.image.height)

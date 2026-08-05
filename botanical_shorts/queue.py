@@ -81,24 +81,30 @@ class Queue:
             added += 1
         return added
 
-    def resolve(self, rejected_indices: set[int], *, order: list[dict[str, Any]]) -> tuple[int, int]:
+    def resolve(self, rejected_pages: set[str], *, order: list[dict[str, Any]]) -> tuple[int, int]:
         """Settle a review: mark rejections, approve the rest, fix the order.
 
-        ``rejected_indices`` are positions in the pending list as the review
-        page numbered them. ``order`` is the approved entries in the sequence
-        they should publish in -- stored as an explicit rank so the order
-        survives the file being rewritten.
+        Keyed by page id rather than by position. Positions were a real hazard:
+        the review page numbered only the plates one harvest had added, while
+        this numbered everything pending, so a second harvest silently shifted
+        every index and "reject 5" would have retired a plate five rows into a
+        different list.
+
+        ``order`` is the approved entries in the sequence they should publish
+        in, stored as an explicit rank so it survives the file being rewritten.
         """
-        pending = self.with_status(PENDING)
-        for i, entry in enumerate(pending):
-            entry["status"] = REJECTED if i in rejected_indices else APPROVED
+        rejected_pages = {str(p) for p in rejected_pages}
+        for entry in self.with_status(PENDING):
+            entry["status"] = (
+                REJECTED if str(entry.get("page_id")) in rejected_pages else APPROVED
+            )
 
         for rank, entry in enumerate(order):
             entry["publish_rank"] = rank
 
         # Approved entries sort by rank; everything else keeps its place.
         self.entries.sort(key=lambda e: (e.get("status") != APPROVED, e.get("publish_rank", 1 << 30)))
-        return len(order), len(rejected_indices)
+        return len(order), len(rejected_pages)
 
     def reconcile(self, history) -> int:
         """Mark as published anything history says is already live.
