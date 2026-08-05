@@ -1475,3 +1475,124 @@ def test_rejection_summary_names_an_empty_pool_as_such():
     from botanical_shorts.pipeline import summarise_rejections
 
     assert "pool itself was empty" in summarise_rejections([])[0]
+
+
+# -- the pool audit ----------------------------------------------------------
+#
+# The selector stops at the first plate that clears every gate, so the pool it
+# walked past leaves no evidence but a count -- and "98 rejected at download"
+# is equally consistent with the gate catching black scan frames and with it
+# discarding good plates.
+
+def test_audit_judges_every_candidate_instead_of_stopping_at_the_first_pass(
+    tmp_path, monkeypatch
+):
+    from botanical_shorts import pipeline
+
+    works = [
+        {"title_id": "T1", "item_id": "I1", "page_ids": ["good1"]},
+        {"title_id": "T2", "item_id": "I2", "page_ids": ["dark"]},
+        {"title_id": "T3", "item_id": "I3", "page_ids": ["good2"]},
+        {"title_id": "T4", "item_id": "I4", "page_ids": ["wide"]},
+    ]
+    plates = {
+        "good1": make_plate(900, 1200),
+        "dark": _dark_plate(),
+        "good2": make_plate(900, 1200),
+        "wide": make_plate(2000, 900),
+    }
+    _install_stub_pool(monkeypatch, works, plates, None)
+    cfg = _cfg_for_stub(history_path=tmp_path / "h.json")
+
+    records = pipeline.audit_pool(cfg, count=10, vision_calls=0)
+
+    assert len(records) == 4, "the walk must not stop at the first passing plate"
+    by_page = {r.page_id: r.stage for r in records}
+    assert by_page == {
+        "good1": "not inspected",
+        "dark": "border",
+        "good2": "not inspected",
+        "wide": "aspect",
+    }
+    # A thumbnail for everything that was fetched, so each verdict is checkable
+    # by eye rather than on trust.
+    assert all(r.thumb is not None for r in records)
+
+
+def test_audit_names_the_specific_gate_not_just_the_stage(tmp_path, monkeypatch):
+    from botanical_shorts import pipeline
+
+    works = [{"title_id": "T1", "item_id": "I1", "page_ids": ["blank"]}]
+    # Clean paper, no engraving: passes the border gate, fails on ink.
+    plates = {"blank": Image.new("RGB", (900, 1200), (232, 222, 201))}
+    _install_stub_pool(monkeypatch, works, plates, None)
+    cfg = _cfg_for_stub(history_path=tmp_path / "h.json")
+
+    records = pipeline.audit_pool(cfg, count=5, vision_calls=0)
+    assert [r.stage for r in records] == ["ink"]
+
+
+def test_audit_page_groups_by_verdict_and_escapes_titles():
+    from botanical_shorts import audit
+    from botanical_shorts.pipeline import Audited
+
+    records = [
+        Audited("1", "<script>x</script>", "passed", "quality 9/10", make_plate(120, 160)),
+        Audited("2", "A dark one", "border", "border luminance 6 is below 60", make_plate(120, 160)),
+        Audited("3", "Unlicensed", "licence", "rights unknown"),
+    ]
+    page = audit.render(records, settings={"min_border_luminance": 60})
+
+    assert "Passed every gate" in page
+    assert "Rejected: dark border" in page
+    assert "Rejected on licence (never downloaded)" in page
+    assert "<script>x</script>" not in page and "&lt;script&gt;" in page
+    # A licence rejection never fetched an image; the card says so rather than
+    # showing a broken frame.
+    assert "no image fetched" in page
+    assert page.count("data:image/jpeg;base64,") == 2
+
+
+def test_audit_page_shows_a_stage_it_was_never_told_about():
+    """A new gate must not silently vanish from a page whose point is completeness."""
+    from botanical_shorts import audit
+    from botanical_shorts.pipeline import Audited
+
+    page = audit.render([Audited("1", "T", "brand new gate", "why")], settings={})
+    assert "brand new gate" in page
+
+
+def test_overlapping_subjects_do_not_walk_the_same_work_twice():
+    """Found by building the audit: the same page appeared under two headings.
+
+    "Botanical illustration" is largely a subset of "botany", so every work in
+    the overlap had its plates downloaded and gated once per heading.
+    """
+    class _Client:
+        def __init__(self):
+            self.title_calls = 0
+
+        def subject_titles(self, subject):
+            return [{"TitleID": "T1", "Year": "1850", "BHLType": "Title"}]
+
+        def get_title_metadata(self, title_id):
+            self.title_calls += 1
+            return {"TitleID": title_id, "FullTitle": "Shared", "Year": "1850",
+                    "Items": [{"ItemID": "I1"}]}
+
+        def get_item_metadata(self, item_id):
+            return {"ItemID": item_id, "RightsStatus": "Public domain",
+                    "Pages": [{"PageID": "P1", "PageTypes": ["Illustration"]}]}
+
+    client = _Client()
+    got = list(bhl.iter_candidates(
+        client,
+        subjects=["Botanical illustration", "botany"],
+        page_types=["Illustration"],
+        year_min=1700, year_max=1920,
+        titles_per_subject=10, max_items_per_title=3, max_pages_per_item=6,
+        limit=50,
+    ))
+
+    assert [c.page_id for c in got] == ["P1"]
+    assert client.title_calls == 1, "the second heading must not re-fetch the work"

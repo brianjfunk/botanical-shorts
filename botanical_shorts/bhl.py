@@ -322,6 +322,10 @@ def iter_candidates(
     seen_pages = {str(p) for p in skip_pages}
     seen_items = {str(i) for i in skip_items}
     cooling_titles = {str(t) for t in skip_titles}
+    # Subject headings overlap: a work indexed under both "botany" and
+    # "Botanical illustration" would otherwise be walked once per heading, and
+    # every gate applied to its plates twice. Carried across subjects.
+    walked_titles: set[str] = set()
     emitted = 0
 
     for subject in subjects:
@@ -345,10 +349,12 @@ def iter_candidates(
             title_id = str(pick(title_rec, "title_id") or "")
             if not title_id:
                 continue
-            if title_id in cooling_titles:
-                # Featured too recently; skip before the metadata call and
-                # without spending any of `limit`.
+            if title_id in cooling_titles or title_id in walked_titles:
+                # Featured too recently, or already reached under an earlier
+                # subject. Skipped before the metadata call and without
+                # spending any of `limit`.
                 continue
+            walked_titles.add(title_id)
 
             year = _year(pick(title_rec, "year"))
             if year and not (year_min <= int(year) <= year_max):
@@ -406,6 +412,7 @@ def iter_candidates(
 
                     kept_from_item += 1
                     emitted += 1
+                    seen_pages.add(page_id)
                     yield PageCandidate(
                         page_id=page_id,
                         item_id=item_id,

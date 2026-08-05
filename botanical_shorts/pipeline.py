@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 import requests
+from PIL import Image
 
 from . import bhl, imaging, licensing, metadata, notify, video, youtube
 from .config import Config, require_env
@@ -60,6 +61,21 @@ MAX_TITLE_STRIKES = 4
 # than returning a verdict. One flaky response should not end a run, but a
 # sustained outage should stop quickly rather than retrying down the pool.
 MAX_VISION_ERRORS = 4
+
+
+def check_image_gates(img: Image.Image, cfg: Config) -> None:
+    """Every gate that judges the scan itself, in the order the pipeline runs them.
+
+    One function so the auditor cannot drift from the selector. An audit that
+    reports gates the pipeline no longer applies is worse than no audit, since
+    it would be trusted. Raises :class:`imaging.ImageError` naming the first
+    gate that failed; all four are cheap and local, so they run before any
+    vision call is spent.
+    """
+    imaging.check_source_resolution(img, cfg.image.min_source_width, cfg.image.min_source_height)
+    imaging.check_aspect(img, cfg.image.max_source_aspect)
+    imaging.check_border_tone(img, cfg.image.min_border_luminance)
+    imaging.check_ink_coverage(img, cfg.image.min_ink_coverage)
 
 
 def select_and_build(
@@ -144,13 +160,7 @@ def select_and_build(
         try:
             data = bhl.download_page_image(candidate, session=session)
             img = imaging.load_image(data)
-            imaging.check_source_resolution(
-                img, cfg.image.min_source_width, cfg.image.min_source_height
-            )
-            imaging.check_aspect(img, cfg.image.max_source_aspect)
-            # Cheap and local, so both run before spending a vision call.
-            imaging.check_border_tone(img, cfg.image.min_border_luminance)
-            imaging.check_ink_coverage(img, cfg.image.min_ink_coverage)
+            check_image_gates(img, cfg)
         except (bhl.BHLError, imaging.ImageError, requests.RequestException) as exc:
             rejections.append(Rejection(page_id, "download", str(exc)))
             strike(candidate)
@@ -570,6 +580,143 @@ def publish_batch(cfg: Config, batch: Sequence[dict[str, Any]]) -> list[dict[str
         log.info("uploaded %s, publishes %s", upload.video_id, upload.publish_at)
 
     return published
+
+
+# -- auditing ----------------------------------------------------------------
+#
+# The selector is lazy by design: it stops at the first plate that clears every
+# gate, so the pool it walked past is never seen. That is right for a daily run
+# and wrong for judging whether the gates are set correctly -- the only
+# evidence they produce is a count, and a count cannot distinguish a gate
+# saving you from a black scan frame from a gate throwing away good plates.
+#
+# So this runs the same gates over a fixed slice of the pool, never stops
+# early, and keeps a thumbnail of every candidate alongside the verdict.
+
+
+@dataclass
+class Audited:
+    page_id: str
+    title: str
+    stage: str  # "passed", or the gate that rejected it
+    reason: str
+    thumb: Image.Image | None = None
+
+
+def audit_pool(
+    cfg: Config,
+    *,
+    count: int,
+    vision_calls: int = 0,
+    session: requests.Session | None = None,
+    vision_client: Any = None,
+) -> list[Audited]:
+    """Judge ``count`` candidates against every gate, keeping a thumbnail of each.
+
+    ``vision_calls`` caps how many survivors of the local gates are sent to the
+    model; the rest are reported as "not inspected" rather than as passes, so a
+    zero-cost audit stays honest about what it did not check.
+    """
+    session = session or requests.Session()
+    client = bhl.BHLClient(require_env("BHL_API_KEY"), session=session)
+    history = History(cfg.history_path)
+
+    if vision_calls and vision_client is None:
+        vision_client = _anthropic_client()
+
+    out: list[Audited] = []
+    spent = 0
+
+    candidates = bhl.iter_candidates(
+        client,
+        subjects=cfg.source.subjects,
+        page_types=cfg.source.page_types,
+        year_min=cfg.source.year_min,
+        year_max=cfg.source.year_max,
+        titles_per_subject=cfg.source.titles_per_subject,
+        max_items_per_title=cfg.source.max_items_per_title,
+        max_pages_per_item=cfg.source.max_pages_per_item,
+        limit=count,
+        # Deliberately NOT filtered by history: the point is to see the pool as
+        # the gates see it, including plates a previous run already took.
+        title_offset=len(history.entries),
+    )
+
+    for candidate in candidates:
+        if len(out) >= count:
+            break
+        page_id = candidate.page_id
+        title = candidate.title or "(untitled)"
+
+        verdict = licensing.evaluate(candidate, cfg.license)
+        if not verdict.allowed:
+            # Rejected before any image is fetched. Recorded without a
+            # thumbnail rather than paying for a download to illustrate a
+            # decision that never looked at the picture.
+            out.append(Audited(page_id, title, "licence", verdict.reason))
+            continue
+
+        try:
+            img = imaging.load_image(bhl.download_page_image(candidate, session=session))
+        except (bhl.BHLError, requests.RequestException, imaging.ImageError) as exc:
+            out.append(Audited(page_id, title, "download", str(exc)))
+            continue
+
+        thumb = _audit_thumb(img)
+
+        try:
+            check_image_gates(img, cfg)
+        except imaging.ImageError as exc:
+            out.append(Audited(page_id, title, _gate_of(str(exc)), str(exc), thumb))
+            continue
+
+        if spent >= vision_calls:
+            out.append(
+                Audited(page_id, title, "not inspected", "cleared every local gate", thumb)
+            )
+            continue
+
+        result = inspect_plate(vision_client, img, model=cfg.vision.model)
+        if result.error:
+            out.append(Audited(page_id, title, "vision error", result.error, thumb))
+            continue
+        spent += 1
+        ok, reason = passes(
+            result,
+            min_quality=cfg.vision.min_scan_quality,
+            caption_mode=cfg.vision.caption_mode,
+        )
+        note = f"quality {result.scan_quality}/10 -- {result.subject_summary}".strip(" -")
+        out.append(
+            Audited(page_id, title, "passed" if ok else "vision", reason if not ok else note, thumb)
+        )
+
+    log.info(
+        "audited %d candidates, %d vision calls spent", len(out), spent
+    )
+    return out
+
+
+# The gate names come out of the reason text rather than a separate flag, so a
+# new gate in check_image_gates shows up here without being registered twice.
+_GATE_MARKERS = (
+    ("aspect", "aspect"),
+    ("below the", "resolution"),
+    ("border luminance", "border"),
+    ("carries ink", "ink"),
+)
+
+
+def _gate_of(reason: str) -> str:
+    for marker, name in _GATE_MARKERS:
+        if marker in reason:
+            return name
+    return "download"
+
+
+def _audit_thumb(img: Image.Image, width: int = 260) -> Image.Image:
+    height = max(1, round(img.height * width / img.width))
+    return img.convert("RGB").resize((width, height), Image.LANCZOS)
 
 
 def record_rejections(cfg: Config, rejected: Sequence[dict[str, Any]]) -> None:

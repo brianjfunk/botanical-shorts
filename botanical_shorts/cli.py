@@ -605,6 +605,52 @@ def cmd_build_batch(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_audit_pool(args: argparse.Namespace) -> int:
+    """Lay out a slice of the pool with each candidate's verdict, and publish nothing.
+
+    A validation exercise rather than part of the loop: the daily run reports
+    "98 rejected at download", which is equally consistent with the gate saving
+    you from black scan frames and with it discarding good plates. This is how
+    you tell the difference.
+    """
+    from . import audit
+
+    cfg = load_config(args.config)
+    records = pipeline.audit_pool(cfg, count=args.count, vision_calls=args.vision_calls)
+    if not records:
+        print("the walk produced no candidates at all", file=sys.stderr)
+        return 1
+
+    page = audit.render(
+        records,
+        settings={
+            "subjects": ", ".join(cfg.source.subjects),
+            "years": f"{cfg.source.year_min}-{cfg.source.year_max}",
+            "min_source_width": cfg.image.min_source_width,
+            "min_source_height": cfg.image.min_source_height,
+            "max_source_aspect": cfg.image.max_source_aspect,
+            "min_border_luminance": cfg.image.min_border_luminance,
+            "min_ink_coverage": cfg.image.min_ink_coverage,
+            "min_scan_quality": cfg.vision.min_scan_quality,
+            "vision_calls_spent": sum(
+                1 for r in records if r.stage in {"passed", "vision"}
+            ),
+        },
+    )
+
+    out = Path(args.out or "audit")
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "audit.html").write_text(page)
+
+    tally: dict[str, int] = {}
+    for rec in records:
+        tally[rec.stage] = tally.get(rec.stage, 0) + 1
+    print(f"\n{len(records)} candidates -> {out / 'audit.html'}")
+    for stage, n in sorted(tally.items(), key=lambda kv: -kv[1]):
+        print(f"   {n:4}  {100 * n / len(records):4.0f}%  {stage}")
+    return 0
+
+
 def cmd_apply_review(args: argparse.Namespace) -> int:
     """Publish an approved batch, retiring whatever was rejected.
 
@@ -913,6 +959,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_art.add_argument("--out", help="output directory")
     p_art.set_defaults(func=cmd_channel_art)
+
+    p_audit = sub.add_parser("audit-pool", help="show every candidate and the gate that judged it")
+    p_audit.add_argument("--count", type=int, default=120, help="candidates to judge")
+    p_audit.add_argument(
+        "--vision-calls",
+        type=int,
+        default=0,
+        help="how many survivors of the local gates to send to the model; "
+             "0 audits the local gates only and costs nothing",
+    )
+    p_audit.add_argument("--out", help="output directory")
+    p_audit.set_defaults(func=cmd_audit_pool)
 
     p_preview = sub.add_parser("preview", help="render letterbox treatments for sign-off")
     p_preview.add_argument("image", help="path to a source plate image")
