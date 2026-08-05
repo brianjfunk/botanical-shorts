@@ -1,0 +1,110 @@
+name: Batch
+
+# Two halves of the review loop, deliberately separate runs.
+#
+#   build   -- select N plates, upload nothing, render the review page
+#   publish -- take the reply from that page and upload what survived
+#
+# Nothing publishes without a human between the two. The fallback is to hold:
+# an unreviewed batch simply sits, so an unattended week leaves the channel
+# quiet rather than publishing something nobody looked at.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "build a batch, or publish the reviewed one"
+        type: choice
+        options: [build, publish]
+        default: build
+      count:
+        description: "build only: how many plates to select"
+        type: string
+        default: "10"
+      decision:
+        description: "publish only: the line from the review page, e.g. 'reject 2,5,9'"
+        type: string
+        default: "approve all"
+
+concurrency:
+  group: batch
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  batch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install ffmpeg
+        if: inputs.mode == 'publish'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Inputs travel through the environment, never interpolated into the
+      # script: a decision line is free text and would otherwise be shell.
+      - name: Build a batch
+        if: inputs.mode == 'build'
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          COUNT: ${{ inputs.count }}
+        run: python -m botanical_shorts.cli -v build-batch --count "${COUNT:-10}"
+
+      - name: Publish the reviewed batch
+        if: inputs.mode == 'publish'
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DECISION: ${{ inputs.decision }}
+        run: python -m botanical_shorts.cli -v apply-review "$DECISION"
+
+      # Always, and before anything can fail afterwards: on a build this
+      # carries the pending manifest, and on a publish it carries the history
+      # of what went live. Losing either means republishing.
+      - name: Commit the batch state
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add review/ state/ 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
+          git commit -m "Batch ${{ inputs.mode }} ($(date -u +%Y-%m-%d))"
+          for attempt in 1 2 3; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
+              git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $((attempt * 4))
+          done
+          echo "::error::could not push the batch state"
+          exit 1
+
+      - name: Upload artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch-${{ github.run_number }}
+          path: |
+            review/
+            build/*.png
+          if-no-files-found: ignore
+          retention-days: 30
