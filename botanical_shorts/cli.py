@@ -567,6 +567,97 @@ def cmd_page_info(args: argparse.Namespace) -> int:
     return 0
 
 
+def _pending_path(cfg) -> Path:
+    return cfg.history_path.parent / "pending.json"
+
+
+def cmd_build_batch(args: argparse.Namespace) -> int:
+    """Select a batch, render the review page, upload nothing.
+
+    Waits for a human. If nobody reviews it, nothing publishes -- the fallback
+    is to hold rather than to auto-publish, so an unattended week is a quiet
+    channel rather than a channel that published something unlooked-at.
+    """
+    from PIL import Image
+
+    from . import review
+
+    cfg = load_config(args.config)
+    batch = pipeline.build_batch(cfg, count=args.count)
+    if not batch:
+        print("no plates passed the gates", file=sys.stderr)
+        return 1
+
+    images = [Image.open(e["image_path"]) for e in batch]
+    page = review.render(batch, images)
+
+    out = Path(args.out or "review")
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "review.html").write_text(page)
+    # The manifest order is what rejection indices refer to, so it is written
+    # alongside the page and never reordered.
+    _pending_path(cfg).parent.mkdir(parents=True, exist_ok=True)
+    _pending_path(cfg).write_text(json.dumps(batch, indent=2, ensure_ascii=False))
+
+    print(f"\n{len(batch)} plates -> {out / 'review.html'}")
+    for i, e in enumerate(batch, 1):
+        print(f"   {i:2}. {e['title'][:64]}")
+    return 0
+
+
+def cmd_apply_review(args: argparse.Namespace) -> int:
+    """Publish an approved batch, retiring whatever was rejected.
+
+    Takes the reply from the review page verbatim: "approve all" or
+    "reject 2,5,9". Indices are 1-based to match the numbers printed under
+    each thumbnail, so a mistyped code is visible rather than silent.
+    """
+    cfg = load_config(args.config)
+    pending = _pending_path(cfg)
+    if not pending.exists():
+        print(f"no batch awaiting review at {pending}", file=sys.stderr)
+        return 1
+    batch = json.loads(pending.read_text())
+
+    raw = " ".join(args.decision).strip().lower()
+    rejected_idx: set[int] = set()
+    if raw and raw not in {"approve all", "approve", "all"}:
+        digits = raw.replace("reject", " ").replace(",", " ").split()
+        try:
+            rejected_idx = {int(d) - 1 for d in digits}
+        except ValueError:
+            print(f"could not read {raw!r}; expected 'approve all' or 'reject 2,5,9'",
+                  file=sys.stderr)
+            return 2
+        out_of_range = [i + 1 for i in rejected_idx if not 0 <= i < len(batch)]
+        if out_of_range:
+            print(f"no plate numbered {out_of_range} in a batch of {len(batch)}",
+                  file=sys.stderr)
+            return 2
+
+    approved = [e for i, e in enumerate(batch) if i not in rejected_idx]
+    rejected = [e for i, e in enumerate(batch) if i in rejected_idx]
+    print(f"{len(approved)} approved, {len(rejected)} rejected")
+
+    # Rejections are recorded first. If the upload half then fails, the
+    # rejected plates stay rejected rather than being offered again.
+    if rejected:
+        pipeline.record_rejections(cfg, rejected)
+        for e in rejected:
+            print(f"   retired: {e['title'][:60]}")
+
+    if args.dry_run:
+        print("dry run; nothing uploaded and the batch is left pending")
+        return 0
+
+    published = pipeline.publish_batch(cfg, approved) if approved else []
+    for e in published:
+        print(f"   uploaded {e['video_id']}  {e['title'][:56]}")
+
+    pending.unlink()
+    return 0
+
+
 def cmd_sample_plates(args: argparse.Namespace) -> int:
     """Render a contact sheet of what a subject actually publishes.
 
@@ -788,6 +879,18 @@ def main(argv: list[str] | None = None) -> int:
     p_page = sub.add_parser("page-info", help="resolve page ids to their volume and work")
     p_page.add_argument("page_ids", nargs="+", help="BHL page ids to look up")
     p_page.set_defaults(func=cmd_page_info)
+
+    p_batch = sub.add_parser("build-batch", help="select a batch and render the review page")
+    p_batch.add_argument("--count", type=int, default=10, help="plates to select")
+    p_batch.add_argument("--out", help="directory for review.html")
+    p_batch.set_defaults(func=cmd_build_batch)
+
+    p_apply = sub.add_parser("apply-review", help="publish an approved batch")
+    p_apply.add_argument(
+        "decision", nargs="+", help="'approve all' or 'reject 2,5,9', as the page prints it"
+    )
+    p_apply.add_argument("--dry-run", action="store_true", help="record rejections only")
+    p_apply.set_defaults(func=cmd_apply_review)
 
     p_samp = sub.add_parser("sample-plates", help="contact sheet of what a subject publishes")
     p_samp.add_argument("subjects", nargs="+", help="BHL subject headings to sample")

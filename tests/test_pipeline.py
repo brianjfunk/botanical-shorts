@@ -1159,3 +1159,76 @@ def test_verify_bhl_reports_a_dead_subject(capsys):
     assert rc == 1
     assert "DEAD" in out.out
     assert "made up heading" in out.err
+
+
+# -- batch review ------------------------------------------------------------
+#
+# The gates settle what is mechanically wrong; a person settles the rest. That
+# hand-off is only safe if the reply from the review page is read exactly:
+# misreading it either publishes a plate that was vetoed, or retires one that
+# was wanted. Both are silent failures.
+
+def _review_page(n=3):
+    from botanical_shorts import review
+
+    entries = [{"title": f"Plate {i}", "citation": "Somebody, 1830"} for i in range(n)]
+    images = [Image.new("RGB", (600, 900), (232, 222, 201)) for _ in range(n)]
+    return review.render(entries, images)
+
+
+def test_review_page_is_self_contained():
+    """Published behind a strict CSP: a remote <img> would simply not load."""
+    page = _review_page()
+    assert "data:image/jpeg;base64," in page
+    assert "http://" not in page and "https://" not in page
+
+
+def test_review_page_numbers_match_the_reject_code():
+    """Captions are 1-based so a mistyped code is visible rather than silent."""
+    page = _review_page(3)
+    for n in (1, 2, 3):
+        assert f"<b>{n}.</b>" in page
+    assert "i + 1" in page
+
+
+def test_review_page_escapes_titles():
+    from botanical_shorts import review
+
+    page = review.render(
+        [{"title": '<script>alert(1)</script>', "citation": ""}],
+        [Image.new("RGB", (60, 90), (230, 220, 200))],
+    )
+    assert "<script>alert(1)</script>" not in page
+    assert "&lt;script&gt;" in page
+
+
+@pytest.mark.parametrize(
+    "reply,expected",
+    [
+        ("approve all", set()),
+        ("APPROVE ALL", set()),
+        ("reject 2", {1}),
+        ("reject 1,3", {0, 2}),
+        ("reject 1, 3", {0, 2}),
+        ("2,5", {1, 4}),
+    ],
+)
+def test_reject_codes_parse(reply, expected):
+    raw = reply.strip().lower()
+    got = set()
+    if raw and raw not in {"approve all", "approve", "all"}:
+        got = {int(d) - 1 for d in raw.replace("reject", " ").replace(",", " ").split()}
+    assert got == expected
+
+
+def test_rejections_are_recorded_so_a_plate_is_never_reoffered(tmp_path):
+    """A rejection retires a plate exactly as a publication does: the page and
+    volume dedupe key off ids that are present either way."""
+    h = History(tmp_path / "h.json")
+    h.record({"page_id": "9", "item_id": "8", "title_id": "7", "rejected": True})
+    h.save()
+
+    reloaded = History(tmp_path / "h.json")
+    assert reloaded.has_page("9")
+    assert reloaded.has_item("8")
+    assert "7" in reloaded.recent_title_ids(10)

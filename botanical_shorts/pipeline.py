@@ -11,7 +11,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import requests
 
@@ -186,6 +186,10 @@ def select_and_build(
             "upscaled": framed.upscaled,
             "letterbox": cfg.image.letterbox,
             "duration_seconds": cfg.video.duration_seconds,
+            # Enough to rebuild the candidate later. A reviewed batch is
+            # published from a different, later run on a fresh machine, so
+            # everything the frame depends on has to travel in the manifest.
+            "candidate": _candidate_fields(candidate),
         }
         if vision_verdict:
             summary.update(
@@ -309,3 +313,167 @@ def _run_once(
     notify.save_summary(result.summary, cfg.output_dir / "summary.json")
     log.info("uploaded %s, publishes %s", upload.video_id, upload.publish_at)
     return result
+
+
+# -- batch review ------------------------------------------------------------
+#
+# The gates settle what is mechanically wrong. What survives can still be
+# wrong in ways only a person can name -- a photograph among engravings, a
+# skull diagram, a plate whose subject does not match its category. So a batch
+# is built, looked at once, and only then published.
+#
+# The manifest stores metadata rather than rendered frames. Runners are
+# ephemeral, so anything needed at publish time has to be committed, and
+# committing a megabyte of PNG per plate would bloat the repository for no
+# gain: the same page always yields the same frame, so it is cheaper to
+# re-derive it than to carry it.
+
+
+def _candidate_fields(cand: bhl.PageCandidate) -> dict[str, Any]:
+    return {
+        "page_id": cand.page_id,
+        "item_id": cand.item_id,
+        "title_id": cand.title_id,
+        "title": cand.title,
+        "year": cand.year,
+        "publisher": cand.publisher,
+        "authors": list(cand.authors),
+        "page_types": list(cand.page_types),
+        "rights": cand.rights,
+        "license_name": cand.license_name,
+        "license_url": cand.license_url,
+        "source": cand.source,
+        "subject": cand.subject,
+    }
+
+
+def build_batch(cfg: Config, *, count: int) -> list[dict[str, Any]]:
+    """Select and frame ``count`` plates without uploading any of them.
+
+    Each accepted plate is recorded into the in-memory history so the next
+    iteration does not offer the same page, volume or recently-used work --
+    but the history is never saved, because nothing here has been published.
+    Rejections are written to history separately by :func:`apply_review`.
+    """
+    history = History(cfg.history_path)
+    batch: list[dict[str, Any]] = []
+
+    for n in range(count):
+        log.info("--- selecting %d of %d ---", n + 1, count)
+        result = select_and_build(cfg, history=history, dry_run=True)
+        if not result.accepted:
+            log.warning("no further plate found; batch stops at %d", len(batch))
+            break
+
+        entry = dict(result.summary)
+        entry["image_path"] = str(result.image_path)
+        batch.append(entry)
+        # In-memory only: this plate is a candidate, not a publication.
+        history.record(
+            {
+                "page_id": entry["page_id"],
+                "item_id": entry["item_id"],
+                "title_id": entry["title_id"],
+            }
+        )
+    return batch
+
+
+def publish_batch(cfg: Config, batch: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Render and upload an approved batch, recording each publication.
+
+    The frame is re-derived from the page rather than carried through from the
+    build, so a rejected plate costs nothing to have considered and an approved
+    one costs one extra download.
+    """
+    history = History(cfg.history_path)
+    session = requests.Session()
+    published: list[dict[str, Any]] = []
+
+    creds = youtube.build_credentials(
+        require_env("YOUTUBE_CLIENT_ID"),
+        require_env("YOUTUBE_CLIENT_SECRET"),
+        require_env("YOUTUBE_REFRESH_TOKEN"),
+    )
+
+    for entry in batch:
+        cand = bhl.PageCandidate(**{
+            k: v for k, v in entry["candidate"].items()
+            if k in bhl.PageCandidate.__dataclass_fields__
+        })
+        img = imaging.load_image(bhl.download_page_image(cand, session=session))
+        framed = imaging.frame_vertical(
+            img,
+            width=cfg.image.width,
+            height=cfg.image.height,
+            margin_ratio=cfg.image.margin_ratio,
+            letterbox=cfg.image.letterbox,
+            fixed_fill_color=cfg.image.fixed_fill_color,
+            border_px=cfg.image.border_px,
+            border_color=cfg.image.border_color,
+        )
+
+        out_dir = cfg.output_dir
+        out_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+        video_path = out_dir / f"{stamp}-{cand.page_id}.mp4"
+        framed.image.save(out_dir / f"{stamp}-{cand.page_id}.png", format="PNG")
+        video.render_still(
+            framed.image,
+            video_path,
+            duration_seconds=cfg.video.duration_seconds,
+            fps=cfg.video.fps,
+            crf=cfg.video.crf,
+        )
+
+        upload = youtube.upload_video(
+            video_path,
+            title=entry["title"],
+            description=entry["description"],
+            tags=cfg.upload.tags,
+            category_id=cfg.upload.category_id,
+            privacy_status=cfg.upload.privacy_status,
+            publish_at=youtube.scheduled_publish_time(cfg.upload.publish_delay_hours),
+            made_for_kids=cfg.upload.made_for_kids,
+            credentials=creds,
+        )
+        history.record(
+            {
+                "page_id": cand.page_id,
+                "item_id": cand.item_id,
+                "title_id": cand.title_id,
+                "title": entry["title"],
+                "video_id": upload.video_id,
+                "publish_at": upload.publish_at,
+            }
+        )
+        # Saved after every upload, not at the end: a run that dies partway
+        # must not leave live videos unrecorded, or the next run republishes
+        # them. The seeding batch hit exactly this.
+        history.save()
+        published.append({**entry, "video_id": upload.video_id, "url": upload.url})
+        log.info("uploaded %s, publishes %s", upload.video_id, upload.publish_at)
+
+    return published
+
+
+def record_rejections(cfg: Config, rejected: Sequence[dict[str, Any]]) -> None:
+    """Mark rejected plates so they are never offered again.
+
+    Written into the same history the selector already consults, with a flag
+    rather than a video id -- the page and volume dedupe both key off ids that
+    are present either way, so a rejection retires a plate exactly as a
+    publication does.
+    """
+    history = History(cfg.history_path)
+    for entry in rejected:
+        history.record(
+            {
+                "page_id": entry["page_id"],
+                "item_id": entry["item_id"],
+                "title_id": entry["title_id"],
+                "title": entry.get("title", ""),
+                "rejected": True,
+            }
+        )
+    history.save()
