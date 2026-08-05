@@ -1,0 +1,346 @@
+21:50:56 DEBUG   urllib3.connectionpool: Starting new HTTPS connection (1): www.biodiversitylibrary.org:443
+21:50:56 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Birds HTTP/1.1" 200 None
+21:50:59 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Birds&pubs=t HTTP/1.1" 200 None
+21:50:59 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=RU-BIRDS&pubs=t HTTP/1.1" 200 None
+21:50:59 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Sea+birds&pubs=t HTTP/1.1" 200 None
+21:50:59 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Cage+birds&pubs=t HTTP/1.1" 200 None
+21:50:59 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Cage-birds&pubs=t HTTP/1.1" 200 None
+21:50:59 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Rare+birds&pubs=t HTTP/1.1" 200 None
+21:50:59 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Ornithology HTTP/1.1" 200 None
+21:51:01 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Ornithology&pubs=t HTTP/1.1" 200 None
+21:51:01 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Ornithology--Oceania&pubs=t HTTP/1.1" 200 None
+21:51:01 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=ornithology+database&pubs=t HTTP/1.1" 200 None
+21:51:01 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Ornithology--Victoria&pubs=t HTTP/1.1" 200 None
+21:51:01 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=New+Jersey.+Ornithology&pubs=t HTTP/1.1" 200 None
+21:51:01 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Ornithology+-+Periodicals&pubs=t HTTP/1.1" 200 None
+21:51:02 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Insects HTTP/1.1" 200 None
+21:51:04 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Insects&pubs=t HTTP/1.1" 200 None
+21:51:04 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=lac+insects&pubs=t HTTP/1.1" 200 None
+21:51:04 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=pet+insects&pubs=t HTTP/1.1" 200 None
+21:51:05 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Rare+insects&pubs=t HTTP/1.1" 200 None
+21:51:05 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=cave+insects&pubs=t HTTP/1.1" 200 None
+21:51:05 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=host+insects&pubs=t HTTP/1.1" 200 None
+21:51:06 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Entomology HTTP/1.1" 200 None
+21:51:06 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Entomology&pubs=t HTTP/1.1" 200 None
+21:51:06 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=ethno-entomology&pubs=t HTTP/1.1" 200 None
+21:51:06 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=urban+entomology&pubs=t HTTP/1.1" 200 None
+21:51:06 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Alpine+entomology&pubs=t HTTP/1.1" 200 None
+21:51:06 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=forest+entomology&pubs=t HTTP/1.1" 200 None
+21:51:06 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Forense+Entomology&pubs=t HTTP/1.1" 200 None
+21:51:06 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Butterflies HTTP/1.1" 200 None
+21:51:07 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Butterflies&pubs=t HTTP/1.1" 200 None
+21:51:07 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Rare+butterflies&pubs=t HTTP/1.1" 200 None
+21:51:07 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Andean+butterflies&pubs=t HTTP/1.1" 200 None
+21:51:07 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Butterflies+in+art&pubs=t HTTP/1.1" 200 None
+21:51:07 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=African+butterflies&pubs=t HTTP/1.1" 200 None
+21:51:07 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Butterflies%2C+Fossil&pubs=t HTTP/1.1" 429 0
+21:51:07 WARNING botanical_shorts.bhl: BHL GetSubjectMetadata failed (GetSubjectMetadata: HTTP 429); retrying in 2s
+21:51:09 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Butterflies%2C+Fossil&pubs=t HTTP/1.1" 200 None
+21:51:09 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Fishes HTTP/1.1" 200 None
+21:51:10 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Fishes&pubs=t HTTP/1.1" 200 None
+21:51:10 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=fin+fishes&pubs=t HTTP/1.1" 200 None
+21:51:10 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Cave+fishes&pubs=t HTTP/1.1" 200 None
+21:51:10 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Rare+fishes&pubs=t HTTP/1.1" 200 None
+21:51:10 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Reef+fishes&pubs=t HTTP/1.1" 200 None
+21:51:10 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=bony+fishes&pubs=t HTTP/1.1" 200 None
+21:51:10 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Reptiles HTTP/1.1" 200 None
+21:51:11 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Reptiles&pubs=t HTTP/1.1" 200 None
+21:51:11 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Reptiles.&pubs=t HTTP/1.1" 200 None
+21:51:11 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Rare+reptiles&pubs=t HTTP/1.1" 200 None
+21:51:11 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=exotic+reptiles&pubs=t HTTP/1.1" 429 0
+21:51:11 WARNING botanical_shorts.bhl: BHL GetSubjectMetadata failed (GetSubjectMetadata: HTTP 429); retrying in 2s
+21:51:13 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=exotic+reptiles&pubs=t HTTP/1.1" 200 None
+21:51:13 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Aquatic+reptiles&pubs=t HTTP/1.1" 200 None
+21:51:13 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Captive+reptiles&pubs=t HTTP/1.1" 200 None
+21:51:13 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Amphibians HTTP/1.1" 200 None
+21:51:14 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Amphibians&pubs=t HTTP/1.1" 200 None
+21:51:14 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Rare+amphibians&pubs=t HTTP/1.1" 200 None
+21:51:14 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=alien+amphibians&pubs=t HTTP/1.1" 200 None
+21:51:14 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Anuran+amphibians&pubs=t HTTP/1.1" 200 None
+21:51:14 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Pipa+%28Amphibians%29&pubs=t HTTP/1.1" 200 None
+21:51:14 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=exotic+amphibians&pubs=t HTTP/1.1" 200 None
+21:51:14 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Fungi HTTP/1.1" 429 0
+21:51:14 WARNING botanical_shorts.bhl: BHL SubjectSearch failed (SubjectSearch: HTTP 429); retrying in 2s
+21:51:16 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Fungi HTTP/1.1" 200 None
+21:51:16 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Fungi&pubs=t HTTP/1.1" 200 None
+21:51:17 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=ant+fungi&pubs=t HTTP/1.1" 200 None
+21:51:17 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=gut+fungi&pubs=t HTTP/1.1" 200 None
+21:51:17 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=sac+fungi&pubs=t HTTP/1.1" 200 None
+21:51:17 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Cave+fungi&pubs=t HTTP/1.1" 200 None
+21:51:17 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Palm+fungi&pubs=t HTTP/1.1" 200 None
+21:51:17 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Mushrooms HTTP/1.1" 429 0
+21:51:17 WARNING botanical_shorts.bhl: BHL SubjectSearch failed (SubjectSearch: HTTP 429); retrying in 2s
+21:51:19 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Mushrooms HTTP/1.1" 200 None
+21:51:19 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Mushrooms&pubs=t HTTP/1.1" 200 None
+21:51:19 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Edible+mushrooms&pubs=t HTTP/1.1" 200 None
+21:51:19 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Mushrooms%2C+Edible&pubs=t HTTP/1.1" 200 None
+21:51:19 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Cookery+%28Mushrooms%29&pubs=t HTTP/1.1" 200 None
+21:51:19 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Cooking+%28Mushrooms%29&pubs=t HTTP/1.1" 200 None
+21:51:19 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=medicinal+mushrooms&pubs=t HTTP/1.1" 200 None
+21:51:19 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Corals HTTP/1.1" 429 0
+21:51:19 WARNING botanical_shorts.bhl: BHL SubjectSearch failed (SubjectSearch: HTTP 429); retrying in 2s
+21:51:21 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Corals HTTP/1.1" 200 None
+21:51:21 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Corals&pubs=t HTTP/1.1" 200 None
+21:51:21 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=soft+corals&pubs=t HTTP/1.1" 200 None
+21:51:21 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=%3Bsoft+corals&pubs=t HTTP/1.1" 200 None
+21:51:22 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Black+corals&pubs=t HTTP/1.1" 200 None
+21:51:22 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=stony+corals&pubs=t HTTP/1.1" 200 None
+21:51:22 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Corals%2C+Fossil&pubs=t HTTP/1.1" 200 None
+21:51:22 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Mollusks HTTP/1.1" 200 None
+21:51:22 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Mollusks&pubs=t HTTP/1.1" 200 None
+21:51:23 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Marine+mollusks&pubs=t HTTP/1.1" 200 None
+21:51:23 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Mollusks--China&pubs=t HTTP/1.1" 200 None
+21:51:23 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Helix+%28Mollusks%29&pubs=t HTTP/1.1" 200 None
+21:51:23 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Mollusks%2C+Fossil&pubs=t HTTP/1.1" 200 None
+21:51:23 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Mollusks%2FAnatomy&pubs=t HTTP/1.1" 200 None
+21:51:23 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Crustacea HTTP/1.1" 200 None
+21:51:23 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Crustacea&pubs=t HTTP/1.1" 200 None
+21:51:23 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Crustacea%2C+Fossil&pubs=t HTTP/1.1" 200 None
+21:51:23 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Crustacea--Hawaii&pubs=t HTTP/1.1" 200 None
+21:51:23 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Crustacea+%28Heller%29&pubs=t HTTP/1.1" 429 0
+21:51:23 WARNING botanical_shorts.bhl: BHL GetSubjectMetadata failed (GetSubjectMetadata: HTTP 429); retrying in 2s
+21:51:25 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Crustacea+%28Heller%29&pubs=t HTTP/1.1" 200 None
+21:51:25 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Atyidae+%28Crustacea%29&pubs=t HTTP/1.1" 200 None
+21:51:26 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Crustacea+%E2%80%94+Anatomy&pubs=t HTTP/1.1" 200 None
+21:51:26 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Jellyfishes HTTP/1.1" 200 None
+21:51:26 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Jellyfishes&pubs=t HTTP/1.1" 200 None
+21:51:26 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Jellyfishes%2C+Fossil&pubs=t HTTP/1.1" 200 None
+21:51:26 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Diatoms HTTP/1.1" 429 0
+21:51:26 WARNING botanical_shorts.bhl: BHL SubjectSearch failed (SubjectSearch: HTTP 429); retrying in 2s
+21:51:28 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Diatoms HTTP/1.1" 200 None
+21:51:28 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Diatoms&pubs=t HTTP/1.1" 200 None
+21:51:28 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=marine+diatoms&pubs=t HTTP/1.1" 200 None
+21:51:28 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Centric+diatoms&pubs=t HTTP/1.1" 200 None
+21:51:28 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Diatoms%2C+Fossil&pubs=t HTTP/1.1" 200 None
+21:51:28 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Epizoic+diatoms&pubs=t HTTP/1.1" 200 None
+21:51:28 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=benthic+diatoms&pubs=t HTTP/1.1" 429 0
+21:51:28 WARNING botanical_shorts.bhl: BHL GetSubjectMetadata failed (GetSubjectMetadata: HTTP 429); retrying in 2s
+21:51:30 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=benthic+diatoms&pubs=t HTTP/1.1" 200 None
+21:51:30 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Marine+animals HTTP/1.1" 200 None
+21:51:30 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Marine+animals&pubs=t HTTP/1.1" 200 None
+21:51:31 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Marine+animals%2C+Fossil&pubs=t HTTP/1.1" 200 None
+21:51:31 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Dangerous+marine+animals&pubs=t HTTP/1.1" 200 None
+21:51:31 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Marine%C2%A0animals-%E2%80%8B-%E2%80%8BMexico&pubs=t HTTP/1.1" 200 None
+21:51:31 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Marine+animals+--+California&pubs=t HTTP/1.1" 200 None
+21:51:31 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Marine+animals+--+California+--+Duxbury+Reef&pubs=t HTTP/1.1" 200 None
+21:51:31 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Shells HTTP/1.1" 200 None
+21:51:31 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Shells&pubs=t HTTP/1.1" 429 0
+21:51:31 WARNING botanical_shorts.bhl: BHL GetSubjectMetadata failed (GetSubjectMetadata: HTTP 429); retrying in 2s
+21:51:33 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Shells&pubs=t HTTP/1.1" 200 None
+21:51:33 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Top+shells&pubs=t HTTP/1.1" 200 None
+21:51:33 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Shells+in+art&pubs=t HTTP/1.1" 200 None
+21:51:33 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=oyster+shells&pubs=t HTTP/1.1" 200 None
+21:51:33 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=British+shells&pubs=t HTTP/1.1" 200 None
+21:51:33 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=gastropod+shells&pubs=t HTTP/1.1" 200 None
+21:51:33 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=SubjectSearch&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Fossils HTTP/1.1" 200 None
+21:51:34 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Fossils&pubs=t HTTP/1.1" 200 None
+21:51:34 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=sub-fossils&pubs=t HTTP/1.1" 200 None
+21:51:34 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Amber+fossils&pubs=t HTTP/1.1" 200 None
+21:51:34 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Trace+fossils&pubs=t HTTP/1.1" 429 0
+21:51:34 WARNING botanical_shorts.bhl: BHL GetSubjectMetadata failed (GetSubjectMetadata: HTTP 429); retrying in 2s
+21:51:36 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Trace+fossils&pubs=t HTTP/1.1" 200 None
+21:51:36 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Living+fossils&pubs=t HTTP/1.1" 200 None
+21:51:36 DEBUG   urllib3.connectionpool: https://www.biodiversitylibrary.org:443 "GET /api3?op=GetSubjectMetadata&apikey=af5f4bae-dea5-4bb9-adcb-c47fbd544215&format=json&subject=Fishes%2C+Fossils&pubs=t HTTP/1.1" 200 None
+
+== searching 'Birds'
+   SubjectSearch(subject) -> 143 records
+   143 headings returned
+   [ok  ] 4041 titles  Birds
+   [EMPTY]    0 titles  RU-BIRDS
+   [ok  ]   89 titles  Sea birds
+   [ok  ]   78 titles  Cage birds
+   [ok  ]    4 titles  Cage-birds
+   [ok  ]   14 titles  Rare birds
+
+== searching 'Ornithology'
+   SubjectSearch(subject) -> 14 records
+   14 headings returned
+   [ok  ] 2524 titles  Ornithology
+   [ok  ]   13 titles  Ornithology--Oceania
+   [EMPTY]    0 titles  ornithology database
+   [ok  ]    3 titles  Ornithology--Victoria
+   [ok  ]    1 titles  New Jersey. Ornithology
+   [ok  ]    1 titles  Ornithology - Periodicals
+
+== searching 'Insects'
+   SubjectSearch(subject) -> 114 records
+   114 headings returned
+   [ok  ] 2371 titles  Insects
+   [EMPTY]    0 titles  lac insects
+   [EMPTY]    0 titles  pet insects
+   [ok  ]    2 titles  Rare insects
+   [EMPTY]    0 titles  cave insects
+   [EMPTY]    0 titles  host insects
+
+== searching 'Entomology'
+   SubjectSearch(subject) -> 35 records
+   35 headings returned
+   [ok  ]  810 titles  Entomology
+   [EMPTY]    0 titles  ethno-entomology
+   [EMPTY]    0 titles  urban entomology
+   [EMPTY]    0 titles  Alpine entomology
+   [EMPTY]    0 titles  forest entomology
+   [EMPTY]    0 titles  Forense Entomology
+
+== searching 'Butterflies'
+   SubjectSearch(subject) -> 19 records
+   19 headings returned
+   [ok  ]  381 titles  Butterflies
+   [ok  ]    1 titles  Rare butterflies
+   [EMPTY]    0 titles  Andean butterflies
+   [ok  ]    1 titles  Butterflies in art
+   [EMPTY]    0 titles  African butterflies
+   [ok  ]    3 titles  Butterflies, Fossil
+
+== searching 'Fishes'
+   SubjectSearch(subject) -> 108 records
+   108 headings returned
+   [ok  ] 1692 titles  Fishes
+   [EMPTY]    0 titles  fin fishes
+   [EMPTY]    0 titles  Cave fishes
+   [ok  ]    5 titles  Rare fishes
+   [ok  ]    1 titles  Reef fishes
+   [EMPTY]    0 titles  bony fishes
+
+== searching 'Reptiles'
+   SubjectSearch(subject) -> 19 records
+   19 headings returned
+   [ok  ]  621 titles  Reptiles
+   [EMPTY]    0 titles  Reptiles.
+   [ok  ]    7 titles  Rare reptiles
+   [EMPTY]    0 titles  exotic reptiles
+   [ok  ]    1 titles  Aquatic reptiles
+   [ok  ]    1 titles  Captive reptiles
+
+== searching 'Amphibians'
+   SubjectSearch(subject) -> 17 records
+   17 headings returned
+   [ok  ]  514 titles  Amphibians
+   [ok  ]    6 titles  Rare amphibians
+   [EMPTY]    0 titles  alien amphibians
+   [EMPTY]    0 titles  Anuran amphibians
+   [ok  ]    1 titles  Pipa (Amphibians)
+   [EMPTY]    0 titles  exotic amphibians
+
+== searching 'Fungi'
+   SubjectSearch(subject) -> 203 records
+   203 headings returned
+   [ok  ]  478 titles  Fungi
+   [EMPTY]    0 titles  ant fungi
+   [EMPTY]    0 titles  gut fungi
+   [EMPTY]    0 titles  sac fungi
+   [EMPTY]    0 titles  Cave fungi
+   [EMPTY]    0 titles  Palm fungi
+
+== searching 'Mushrooms'
+   SubjectSearch(subject) -> 17 records
+   17 headings returned
+   [ok  ]  162 titles  Mushrooms
+   [ok  ]   12 titles  Edible mushrooms
+   [ok  ]   14 titles  Mushrooms, Edible
+   [ok  ]    9 titles  Cookery (Mushrooms)
+   [ok  ]    6 titles  Cooking (Mushrooms)
+   [EMPTY]    0 titles  medicinal mushrooms
+
+== searching 'Corals'
+   SubjectSearch(subject) -> 10 records
+   10 headings returned
+   [ok  ]   68 titles  Corals
+   [EMPTY]    0 titles  soft corals
+   [EMPTY]    0 titles  ;soft corals
+   [ok  ]    2 titles  Black corals
+   [EMPTY]    0 titles  stony corals
+   [ok  ]   34 titles  Corals, Fossil
+
+== searching 'Mollusks'
+   SubjectSearch(subject) -> 22 records
+   22 headings returned
+   [ok  ] 1364 titles  Mollusks
+   [EMPTY]    0 titles  Marine mollusks
+   [ok  ]    1 titles  Mollusks--China
+   [ok  ]    7 titles  Helix (Mollusks)
+   [ok  ]  277 titles  Mollusks, Fossil
+   [ok  ]    1 titles  Mollusks/Anatomy
+
+== searching 'Crustacea'
+   SubjectSearch(subject) -> 14 records
+   14 headings returned
+   [ok  ]  461 titles  Crustacea
+   [ok  ]   34 titles  Crustacea, Fossil
+   [ok  ]    1 titles  Crustacea--Hawaii
+   [ok  ]    1 titles  Crustacea (Heller)
+   [ok  ]    1 titles  Atyidae (Crustacea)
+   [ok  ]    1 titles  Crustacea — Anatomy
+
+== searching 'Jellyfishes'
+   SubjectSearch(subject) -> 2 records
+   2 headings returned
+   [ok  ]   40 titles  Jellyfishes
+   [ok  ]    2 titles  Jellyfishes, Fossil
+
+== searching 'Diatoms'
+   SubjectSearch(subject) -> 21 records
+   21 headings returned
+   [ok  ]   36 titles  Diatoms
+   [EMPTY]    0 titles  marine diatoms
+   [EMPTY]    0 titles  Centric diatoms
+   [ok  ]    2 titles  Diatoms, Fossil
+   [EMPTY]    0 titles  Epizoic diatoms
+   [EMPTY]    0 titles  benthic diatoms
+
+== searching 'Marine animals'
+   SubjectSearch(subject) -> 6 records
+   6 headings returned
+   [ok  ]  333 titles  Marine animals
+   [ok  ]    1 titles  Marine animals, Fossil
+   [ok  ]    1 titles  Dangerous marine animals
+   [ok  ]    1 titles  Marine animals-​-​Mexico
+   [ok  ]    1 titles  Marine animals -- California
+   [ok  ]    3 titles  Marine animals -- California -- Duxbury Reef
+
+== searching 'Shells'
+   SubjectSearch(subject) -> 7 records
+   7 headings returned
+   [ok  ]  277 titles  Shells
+   [EMPTY]    0 titles  Top shells
+   [ok  ]    1 titles  Shells in art
+   [EMPTY]    0 titles  oyster shells
+   [EMPTY]    0 titles  British shells
+   [EMPTY]    0 titles  gastropod shells
+
+== searching 'Fossils'
+   SubjectSearch(subject) -> 13 records
+   13 headings returned
+   [ok  ]  274 titles  Fossils
+   [EMPTY]    0 titles  sub-fossils
+   [ok  ]   73 titles  Amber fossils
+   [ok  ]    1 titles  Trace fossils
+   [ok  ]    2 titles  Living fossils
+   [ok  ]    1 titles  Fishes, Fossils
+
+== 64 headings carry titles, of 104 probed
+   4041  Birds
+   2524  Ornithology
+   2371  Insects
+   1692  Fishes
+   1364  Mollusks
+    810  Entomology
+    621  Reptiles
+    514  Amphibians
+    478  Fungi
+    461  Crustacea
+    381  Butterflies
+    333  Marine animals
+    277  Mollusks, Fossil
+    277  Shells
+    274  Fossils
+    162  Mushrooms
+     89  Sea birds
+     78  Cage birds
+     73  Amber fossils
+     68  Corals
+     40  Jellyfishes
+     36  Diatoms
+     34  Corals, Fossil
+     34  Crustacea, Fossil
+     14  Rare birds
