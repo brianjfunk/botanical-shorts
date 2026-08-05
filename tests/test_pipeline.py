@@ -1392,7 +1392,10 @@ def test_a_sustained_vision_outage_stops_rather_than_walking_the_pool(tmp_path, 
 
     def always_fails(client, img, *, model, attempts=2):
         calls["n"] += 1
-        return VisionVerdict(0, False, False, False, False, "", [], error="529 overloaded")
+        return VisionVerdict(
+            0, False, False, False, False, "", [],
+            error="529 overloaded", error_is_transport=True,
+        )
 
     monkeypatch.setattr(pipeline, "inspect_plate", always_fails)
 
@@ -1943,3 +1946,73 @@ def test_zero_delay_means_no_publish_schedule_at_all():
     assert youtube.scheduled_publish_time(0) is None
     assert youtube.scheduled_publish_time(-1) is None
     assert youtube.scheduled_publish_time(24).endswith("Z")
+
+
+# -- a malformed answer is not an outage -------------------------------------
+#
+# The first real 15-plate batch stopped at four. The tally read "3 x inspection
+# failed: Expecting value" and "1 x Unterminated string" -- four parse failures,
+# exactly MAX_VISION_ERRORS, so the outage breaker ended a batch while the API
+# was up and answering. The truncation was self-inflicted: adding
+# illustration_side pushed responses past max_tokens=512.
+
+def test_a_truncated_response_is_reported_as_a_parse_failure():
+    from botanical_shorts import vision
+
+    class _Cut:
+        type = "text"
+        # What a 512-token ceiling actually produces: valid JSON, cut mid-value.
+        text = '{"scan_quality": 9, "subject_summary": "Cypripedium acaul'
+
+    class _Messages:
+        def __init__(self):
+            self.calls = 0
+
+        def create(self, **kwargs):
+            self.calls += 1
+            return type("M", (), {"content": [_Cut()]})()
+
+    client = type("C", (), {"messages": _Messages()})()
+    verdict = vision.inspect_plate(client, make_plate(), model="claude-sonnet-5")
+
+    assert verdict.error
+    assert not verdict.error_is_transport, "the API answered; it is not down"
+
+
+def test_malformed_answers_do_not_stop_the_walk(tmp_path, monkeypatch):
+    """Four bad responses from a working API must not end a batch."""
+    from botanical_shorts import pipeline
+
+    works = [{"title_id": f"T{i}", "item_id": f"I{i}", "page_ids": [f"p{i}"]} for i in range(6)]
+    plates = {f"p{i}": make_plate(900, 1200) for i in range(6)}
+    _install_stub_pool(monkeypatch, works, plates, None)
+    cfg = _cfg_for_stub(history_path=tmp_path / "h.json", output_dir=tmp_path / "b")
+
+    calls = {"n": 0}
+
+    def flaky(client, img, *, model, attempts=2):
+        calls["n"] += 1
+        if calls["n"] <= 5:
+            return VisionVerdict(
+                0, False, False, False, False, "", [],
+                error="Unterminated string", error_is_transport=False,
+            )
+        return VisionVerdict(9, True, True, True, False, "Iris", [])
+
+    monkeypatch.setattr(pipeline, "inspect_plate", flaky)
+
+    result = pipeline.select_and_build(
+        cfg, history=History(tmp_path / "h.json"), dry_run=True, vision_client=object()
+    )
+    assert result.accepted, "five malformed answers must not end the walk"
+    assert calls["n"] == 6
+
+
+def test_the_max_tokens_ceiling_leaves_room_for_the_whole_verdict():
+    """Regression guard on the number itself: 512 truncated real responses."""
+    import inspect as _inspect
+
+    from botanical_shorts import vision
+
+    source = _inspect.getsource(vision.inspect_plate)
+    assert "max_tokens=1024" in source

@@ -31,6 +31,16 @@ log = logging.getLogger(__name__)
 VISION_MAX_EDGE = 1200
 
 
+class VisionParseError(RuntimeError):
+    """The model answered, but not with usable JSON.
+
+    Distinct from a transport failure: the API is up and responding, so this is
+    a property of one response rather than evidence of an outage. Callers that
+    stop a run after repeated *transport* failures must not stop on these, or a
+    handful of malformed answers ends a batch that was otherwise fine.
+    """
+
+
 class VisionAuthError(RuntimeError):
     """The Anthropic credential was rejected.
 
@@ -88,6 +98,7 @@ illustration of", "A drawing of" or similar. If a name is legible on the plate, 
 prefer it. Good: "Lupinus polyphyllus". "Purple-flowered lupine". Bad: "Botanical \
 illustration of a lupine plant with purple flowers".
 - issues (array of short strings): specific defects you observed, empty if none.
+Keep each under six words, and list at most three.
 
 Respond with ONLY a JSON object with keys: scan_quality, caption_embedded, \
 species_name_visible, is_illustration, is_spread, illustration_side, \
@@ -117,6 +128,9 @@ class VisionVerdict:
     illustration_side: str = ""
     raw: str = ""
     error: str = ""
+    # True when the failure was the API itself rather than its answer. Only
+    # these count toward a caller's outage breaker.
+    error_is_transport: bool = False
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -170,7 +184,12 @@ def inspect_plate(client, img: Image.Image, *, model: str, attempts: int = 2) ->
         try:
             message = client.messages.create(
                 model=model,
-                max_tokens=512,
+                # 512 truncated real responses once illustration_side was
+                # added -- the JSON arrived cut mid-string, failed to parse,
+                # read as an API failure and tripped the caller's outage
+                # breaker. The ceiling is not the cost here: the verdict is a
+                # short object, and paying for headroom beats losing a batch.
+                max_tokens=1024,
                 messages=[
                     {
                         "role": "user",
@@ -189,7 +208,10 @@ def inspect_plate(client, img: Image.Image, *, model: str, attempts: int = 2) ->
                 ],
             )
             raw = "".join(block.text for block in message.content if block.type == "text")
-            data = _parse(raw)
+            try:
+                data = _parse(raw)
+            except (json.JSONDecodeError, ValueError) as exc:
+                raise VisionParseError(f"{exc} (response was {len(raw)} chars)") from exc
             break
         except Exception as exc:
             if getattr(exc, "status_code", None) in (401, 403):
@@ -212,6 +234,11 @@ def inspect_plate(client, img: Image.Image, *, model: str, attempts: int = 2) ->
             subject_summary="",
             issues=[],
             error=str(last),
+            # Recorded separately from the message because the caller reacts
+            # differently: repeated transport failures mean the API is down and
+            # the run should stop, while a malformed answer is one bad response
+            # from a working API and should only cost this candidate.
+            error_is_transport=not isinstance(last, VisionParseError),
         )
 
     return VisionVerdict(

@@ -207,7 +207,11 @@ def select_and_build(
                 # Not a verdict on the plate, so it does not spend the call
                 # budget and does not retire the page: the plate goes back in
                 # the pool for a later run to judge.
-                vision_errors += 1
+                # Only a failing API counts toward stopping the run. A
+                # malformed answer is one bad response from a working service,
+                # and four of those used to end a whole batch.
+                if vision_verdict.error_is_transport:
+                    vision_errors += 1
                 rejections.append(
                     Rejection(page_id, "vision", f"inspection failed: {vision_verdict.error}")
                 )
