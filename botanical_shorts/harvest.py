@@ -600,9 +600,12 @@ def audit_aspect(
             if kept.get(slot, 0) >= max_per_band:
                 continue
 
-            # Spent only on the wide bands, which are the ones being judged. A
-            # portrait plate is here as a reference point, not a question.
-            if aspect > 1.25 and vision_client is not None and calls < cfg.vision.max_vision_calls:
+            # Every band, not just the wide ones. Spending vision only on the
+            # plates being judged looked like thrift and produced a first
+            # section full of author portraits and miscellaneous pages -- which
+            # read as a preview of what the channel would publish, and was not.
+            # An audit nobody can trust at a glance is worse than none.
+            if vision_client is not None and calls < cfg.vision.max_vision_calls:
                 calls += 1
                 seen = vision.inspect_plate(vision_client, img, model=cfg.vision.model)
                 if seen.error:

@@ -83,6 +83,14 @@ calibration bar or greyscale target, or a library stamp laid beside the page. Al
 answer false for a title page even when it is decorated with drawn flowers or \
 ornament: if the lettering is the dominant element of the page, it is a title page \
 and not a plate.
+- depicts_organism (boolean): is the PRINCIPAL SUBJECT of this plate one or \
+more living things -- a plant, animal, fungus, alga or their parts, whether \
+whole, dissected or microscopic? Answer false for a portrait or figure study of \
+a PERSON (a frontispiece portrait of the author is a finished plate and still \
+does not belong), a map or chart, a landscape or architectural view with no \
+specimen as its subject, apparatus or equipment, a purely decorative border or \
+ornament, and a page of geological strata or bare mineral specimens. A person \
+shown incidentally beside a specimen for scale does not make this false.
 - is_spread (boolean): does this capture show TWO facing pages photographed \
 together, with a gutter or fold running between them -- for example an \
 illustration on one side and a page of letterpress text on the other? Answer true \
@@ -101,8 +109,8 @@ illustration of a lupine plant with purple flowers".
 Keep each under six words, and list at most three.
 
 Respond with ONLY a JSON object with keys: scan_quality, caption_embedded, \
-species_name_visible, is_illustration, is_spread, illustration_side, \
-subject_summary, issues."""
+species_name_visible, is_illustration, depicts_organism, is_spread, \
+illustration_side, subject_summary, issues."""
 
 
 @dataclass
@@ -126,6 +134,13 @@ class VisionVerdict:
     # placed after the required fields, so the positional constructors used
     # throughout the tests keep working.
     illustration_side: str = ""
+    # Narrower than is_illustration, and the distinction matters: an engraved
+    # frontispiece portrait of the author is a finished pictorial plate by any
+    # reading, and has no business on a natural history channel. Found by Brian
+    # in the aspect audit, whose portrait band had deliberately been left
+    # un-inspected. Defaults true so a verdict recorded before this field
+    # existed is not retroactively rejected.
+    depicts_organism: bool = True
     raw: str = ""
     error: str = ""
     # True when the failure was the API itself rather than its answer. Only
@@ -246,6 +261,10 @@ def inspect_plate(client, img: Image.Image, *, model: str, attempts: int = 2) ->
         caption_embedded=bool(data.get("caption_embedded")),
         species_name_visible=bool(data.get("species_name_visible")),
         is_illustration=bool(data.get("is_illustration")),
+        # Absent from an older response means "not judged", and the safe
+        # reading of an unjudged plate is that it is fine -- the field is new,
+        # and failing closed would reject every entry harvested before it.
+        depicts_organism=bool(data.get("depicts_organism", True)),
         is_spread=bool(data.get("is_spread")),
         illustration_side=str(data.get("illustration_side") or "").strip().lower(),
         subject_summary=str(data.get("subject_summary") or "").strip(),
@@ -274,6 +293,8 @@ def passes(
         return False, f"vision check errored: {verdict.error}"
     if not verdict.is_illustration:
         return False, "not a pictorial plate"
+    if not verdict.depicts_organism:
+        return False, "a plate, but not of an organism"
     if verdict.is_spread and not allow_spread:
         return False, "two facing pages captured together"
     if verdict.scan_quality < min_quality:

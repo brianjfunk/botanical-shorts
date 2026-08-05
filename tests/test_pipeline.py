@@ -2406,3 +2406,48 @@ def test_a_harvested_plate_records_its_category(tmp_path, monkeypatch):
     result = h.harvest(cfg, limit=5, subjects=["Jellyfishes"], category="Marine")
     assert result.entries[0]["category"] == "Marine"
     assert result.entries[0]["subject"] == "Jellyfishes"
+
+
+# -- a plate can be finished and still be wrong ------------------------------
+#
+# Brian, reading the aspect audit: "There were some portraits of some people and
+# a lot of other miscellaneous pages that didn't seem at all like the
+# appropriate content." An engraved frontispiece portrait of the author IS a
+# finished pictorial plate, so is_illustration says yes and always would have.
+# Botanical works open with one routinely.
+
+def test_a_portrait_of_a_person_is_rejected_though_it_is_a_real_plate():
+    from botanical_shorts.vision import VisionVerdict, passes
+
+    portrait = VisionVerdict(
+        scan_quality=9,
+        caption_embedded=True,
+        species_name_visible=False,
+        is_illustration=True,   # it genuinely is a finished plate
+        is_spread=False,
+        subject_summary="Engraved portrait of Carl Linnaeus",
+        issues=[],
+        depicts_organism=False,
+    )
+    ok, reason = passes(portrait, min_quality=7, caption_mode="log_only")
+    assert not ok
+    assert "organism" in reason
+
+
+def test_the_prompt_asks_about_the_subject_not_just_the_page():
+    from botanical_shorts import vision
+
+    assert "depicts_organism" in vision.PROMPT
+    # The specific cases seen in the audit.
+    for case in ("PERSON", "map", "landscape", "apparatus"):
+        assert case in vision.PROMPT
+
+
+def test_an_older_verdict_without_the_field_still_passes():
+    """The field is new. Failing closed would retroactively reject every plate
+    harvested before it existed, including the 85 Brian has already approved."""
+    from botanical_shorts.vision import VisionVerdict, passes
+
+    old = VisionVerdict(9, True, True, True, False, "Iris", [])
+    assert old.depicts_organism is True
+    assert passes(old, min_quality=7, caption_mode="log_only")[0]
