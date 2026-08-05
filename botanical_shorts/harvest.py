@@ -510,3 +510,146 @@ def retire(cfg: Config, entries: list[dict[str, Any]]) -> None:
             }
         )
     history.save()
+
+
+# Aspect bands for the landscape audit. The gate is a single number and the
+# only honest way to choose it is to see what each setting would admit, framed
+# the way it would actually publish.
+ASPECT_BANDS: list[tuple[float, str]] = [
+    (1.25, "portrait, passes today (aspect up to 1.25)"),
+    (1.40, "slightly wide (1.25 - 1.40)"),
+    (1.60, "wide (1.40 - 1.60)"),
+    (2.00, "very wide (1.60 - 2.00)"),
+    (99.0, "panoramic (over 2.00)"),
+]
+
+
+def _band_of(aspect: float) -> str:
+    for ceiling, label in ASPECT_BANDS:
+        if aspect <= ceiling:
+            return label
+    return ASPECT_BANDS[-1][1]
+
+
+def audit_aspect(
+    cfg: Config,
+    *,
+    per_category: int,
+    max_per_band: int = 6,
+) -> list[Any]:
+    """Show what the aspect gate discards, framed as it would publish.
+
+    Every other gate applies; only the aspect check is suspended, and each
+    survivor is sorted into a band and framed into the real 9:16 canvas. That
+    is the whole point: the question is not what a wide scan looks like, it is
+    whether a wide plate letterboxed into a vertical frame reads as a picture
+    or as a stamp adrift in a field of paper. A raw thumbnail cannot answer it.
+
+    Botanical plates are mostly portrait, so the setting has never been tested;
+    bird, fish and reptile plates skew landscape and will meet it constantly.
+    """
+    from .pipeline import Audited, _audit_thumb
+
+    session = requests.Session()
+    client = bhl.BHLClient(require_env("BHL_API_KEY"), session=session)
+    history = History(cfg.history_path)
+    vision_client = None
+    if cfg.vision.enabled and cfg.vision.max_vision_calls > 0:
+        from .pipeline import _anthropic_client
+
+        vision_client = _anthropic_client()
+
+    out: list[Any] = []
+    calls = 0
+    kept: dict[tuple[str, str], int] = {}
+
+    for name, headings in cfg.source.categories.items():
+        log.info("=== aspect audit: %s ===", name)
+        candidates = bhl.iter_candidates(
+            client,
+            subjects=headings,
+            page_types=cfg.source.page_types,
+            year_min=cfg.source.year_min,
+            year_max=cfg.source.year_max,
+            titles_per_subject=cfg.source.titles_per_subject,
+            max_items_per_title=cfg.source.max_items_per_title,
+            max_pages_per_item=cfg.source.max_pages_per_item,
+            limit=per_category,
+            skip_pages=set(history.page_ids),
+        )
+        for candidate in candidates:
+            if not licensing.evaluate(candidate, cfg.license).allowed:
+                continue
+            try:
+                img = imaging.load_image(
+                    bhl.download_page_image(candidate, session=session)
+                )
+                imaging.check_source_resolution(
+                    img, cfg.image.min_source_width, cfg.image.min_source_height
+                )
+                imaging.check_border_tone(img, cfg.image.min_border_luminance)
+                imaging.check_ink_coverage(
+                    img, cfg.image.min_ink_coverage, cfg.image.min_subject_ink_coverage
+                )
+            except Exception:
+                continue
+
+            aspect = img.width / img.height
+            band = _band_of(aspect)
+            slot = (name, band)
+            if kept.get(slot, 0) >= max_per_band:
+                continue
+
+            # Spent only on the wide bands, which are the ones being judged. A
+            # portrait plate is here as a reference point, not a question.
+            if aspect > 1.25 and vision_client is not None and calls < cfg.vision.max_vision_calls:
+                calls += 1
+                seen = vision.inspect_plate(vision_client, img, model=cfg.vision.model)
+                if seen.error:
+                    continue
+                ok, _ = vision.passes(
+                    seen,
+                    min_quality=cfg.vision.min_scan_quality,
+                    caption_mode=cfg.vision.caption_mode,
+                    allow_spread=seen.illustration_side in {"left", "right"},
+                )
+                if not ok:
+                    continue
+                if seen.illustration_side in {"left", "right"}:
+                    try:
+                        img = imaging.split_spread(img, seen.illustration_side)
+                        aspect = img.width / img.height
+                        band = _band_of(aspect)
+                        slot = (name, band)
+                        if kept.get(slot, 0) >= max_per_band:
+                            continue
+                    except imaging.ImageError:
+                        continue
+
+            try:
+                framed = imaging.frame_vertical(
+                    img,
+                    width=cfg.image.width,
+                    height=cfg.image.height,
+                    margin_ratio=cfg.image.margin_ratio,
+                    letterbox=cfg.image.letterbox,
+                    fixed_fill_color=cfg.image.fixed_fill_color,
+                    border_px=cfg.image.border_px,
+                    border_color=cfg.image.border_color,
+                )
+            except imaging.ImageError:
+                continue
+
+            kept[slot] = kept.get(slot, 0) + 1
+            out.append(
+                Audited(
+                    candidate.page_id,
+                    f"{name} - {candidate.title or '(untitled)'}",
+                    band,
+                    f"aspect {aspect:.2f} - {img.width}x{img.height}",
+                    _audit_thumb(framed.image, width=200),
+                )
+            )
+
+    log.info("aspect audit: %d framed examples, %d vision calls", len(out), calls)
+    return out

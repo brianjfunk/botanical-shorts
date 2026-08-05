@@ -12,8 +12,13 @@ name: Audit pool
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: "gates audit, or the aspect-band audit"
+        type: choice
+        options: [gates, aspect]
+        default: gates
       count:
-        description: "how many candidates to judge"
+        description: "gates: candidates to judge / aspect: candidates per category"
         type: string
         default: "120"
       vision_calls:
@@ -47,6 +52,7 @@ jobs:
       # Inputs travel through the environment, never interpolated into the
       # script -- the same quoting hazard that broke sample-plates.
       - name: Audit the pool
+        if: inputs.mode == 'gates'
         env:
           BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -55,6 +61,16 @@ jobs:
         run: |
           python -m botanical_shorts.cli -v audit-pool \
             --count "${COUNT:-120}" --vision-calls "${VISION_CALLS:-0}"
+
+      - name: Audit the aspect bands
+        if: inputs.mode == 'aspect'
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          COUNT: ${{ inputs.count }}
+        run: |
+          python -m botanical_shorts.cli -v aspect-audit \
+            --per-category "${COUNT:-120}"
 
       # Committed rather than left as an artefact: artefact downloads go
       # through a blob host the review proxy blocks, so the page has to reach

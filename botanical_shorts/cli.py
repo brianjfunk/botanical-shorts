@@ -797,6 +797,48 @@ def cmd_audit_pool(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_aspect_audit(args: argparse.Namespace) -> int:
+    """Show what the aspect gate discards, framed as it would publish."""
+    from . import audit
+    from . import harvest as harvest_mod
+
+    cfg = load_config(args.config)
+    records = harvest_mod.audit_aspect(
+        cfg, per_category=args.per_category, max_per_band=args.per_band
+    )
+    if not records:
+        print("no candidates survived the other gates", file=sys.stderr)
+        return 1
+
+    page = audit.render(
+        records,
+        settings={
+            "current max_source_aspect": cfg.image.max_source_aspect,
+            "frame": f"{cfg.image.width}x{cfg.image.height}",
+            "margin_ratio": cfg.image.margin_ratio,
+        },
+        groups=[(label, label) for _, label in harvest_mod.ASPECT_BANDS],
+        lead=(
+            "Each plate is shown framed exactly as it would publish, not as it "
+            "was scanned. Only the aspect check was suspended; every other gate "
+            "applied. The first group is what the channel publishes today - "
+            "the rest is what the setting currently discards."
+        ),
+    )
+    out = Path(args.out or "audit")
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "aspect.html").write_text(page)
+
+    tally: dict[str, int] = {}
+    for rec in records:
+        tally[rec.stage] = tally.get(rec.stage, 0) + 1
+    print(f"\n{len(records)} framed examples -> {out / 'aspect.html'}")
+    for _, label in harvest_mod.ASPECT_BANDS:
+        if label in tally:
+            print(f"   {tally[label]:4}  {label}")
+    return 0
+
+
 def cmd_apply_review(args: argparse.Namespace) -> int:
     """Publish an approved batch, retiring whatever was rejected.
 
@@ -1139,6 +1181,12 @@ def main(argv: list[str] | None = None) -> int:
     p_next = sub.add_parser("publish-next", help="upload the next N approved plates")
     p_next.add_argument("--count", type=int, default=5, help="how many to upload")
     p_next.set_defaults(func=cmd_publish_next)
+
+    p_asp = sub.add_parser("aspect-audit", help="show what the aspect gate discards, framed")
+    p_asp.add_argument("--per-category", type=int, default=120, help="candidates to walk per category")
+    p_asp.add_argument("--per-band", type=int, default=6, help="examples to keep per band per category")
+    p_asp.add_argument("--out", help="output directory")
+    p_asp.set_defaults(func=cmd_aspect_audit)
 
     p_preview = sub.add_parser("preview", help="render letterbox treatments for sign-off")
     p_preview.add_argument("image", help="path to a source plate image")

@@ -55,8 +55,19 @@ def _card(i: int, rec: Any) -> str:
     )
 
 
-def render(records: Sequence[Any], *, settings: dict[str, Any]) -> str:
-    """Build the audit page from :class:`pipeline.Audited` records."""
+def render(
+    records: Sequence[Any],
+    *,
+    settings: dict[str, Any],
+    groups: list[tuple[str, str]] | None = None,
+    lead: str = "",
+) -> str:
+    """Build the audit page from :class:`pipeline.Audited` records.
+
+    ``groups`` overrides the gate ordering, for pages whose stages are not
+    gates at all -- the aspect audit sorts by how wide a plate is.
+    """
+    GROUPS_IN_USE = groups if groups is not None else GROUPS
     by_stage: dict[str, list[Any]] = {}
     for rec in records:
         by_stage.setdefault(rec.stage, []).append(rec)
@@ -65,8 +76,8 @@ def render(records: Sequence[Any], *, settings: dict[str, Any]) -> str:
     sections = []
     # Anything with a stage not in GROUPS still gets shown, at the end, rather
     # than silently vanishing from a page whose whole purpose is completeness.
-    seen = {name for name, _ in GROUPS}
-    ordered = GROUPS + [(s, f"Rejected: {s}") for s in by_stage if s not in seen]
+    seen = {name for name, _ in GROUPS_IN_USE}
+    ordered = GROUPS_IN_USE + [(s, s) for s in by_stage if s not in seen]
 
     for stage, heading in ordered:
         group = by_stage.get(stage)
@@ -123,9 +134,7 @@ def render(records: Sequence[Any], *, settings: dict[str, Any]) -> str:
 </style>
 
 <h1>Pool audit — {len(records)} candidates</h1>
-<p class="lead">Every candidate the walk met, in the order it met them, grouped by
-the gate that judged it. The daily run stops at the first plate in the top group;
-everything below it is what you never see.</p>
+<p class="lead">{lead or "Every candidate the walk met, in the order it met them, grouped by the gate that judged it. The daily run stops at the first plate in the top group; everything below it is what you never see."}</p>
 
 <details><summary>Thresholds in force for this audit</summary>
 <table>{rows}</table></details>
