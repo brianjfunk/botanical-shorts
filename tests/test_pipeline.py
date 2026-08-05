@@ -39,7 +39,10 @@ def test_shipped_config_loads_and_matches_signed_off_decisions():
     assert cfg.vision.caption_mode == "log_only"
     assert 1.0 <= cfg.video.duration_seconds <= 2.0
     assert cfg.upload.privacy_status == "private"
-    assert cfg.upload.publish_delay_hours == 24
+    # No auto-publish. The passive veto window suited one plate a day; a
+    # reviewed batch has already had its judgement, and fifteen uploads sharing
+    # one deadline would all go public at the same moment.
+    assert cfg.upload.publish_delay_hours == 0
 
 
 # -- BHL field tolerance -----------------------------------------------------
@@ -1929,3 +1932,14 @@ def test_a_batch_takes_at_most_one_plate_from_any_work(tmp_path, monkeypatch):
         cfg, source=dataclasses.replace(cfg.source, one_plate_per_title_per_batch=False)
     )
     assert len(pipeline.build_batch(loose, count=3)) == 3
+
+
+def test_zero_delay_means_no_publish_schedule_at_all():
+    """A reviewed batch uploads private and waits: fifteen videos sharing one
+    deadline would all go public at the same moment, and the review page has
+    already supplied the judgement the veto window bought time for."""
+    from botanical_shorts import youtube
+
+    assert youtube.scheduled_publish_time(0) is None
+    assert youtube.scheduled_publish_time(-1) is None
+    assert youtube.scheduled_publish_time(24).endswith("Z")

@@ -82,7 +82,18 @@ def build_credentials(client_id: str, client_secret: str, refresh_token: str) ->
     return creds
 
 
-def scheduled_publish_time(delay_hours: int, *, now: datetime | None = None) -> str:
+def scheduled_publish_time(delay_hours: int, *, now: datetime | None = None) -> str | None:
+    """When the upload should go public, or ``None`` for never.
+
+    Zero (or less) means no schedule at all: the video is uploaded private and
+    stays private until published by hand. That is the right default for a
+    reviewed batch -- a passive veto window makes sense for one plate a day,
+    but a batch of fifteen sharing one deadline would all go public at the same
+    moment, and the review pass has already supplied the judgement the veto
+    window existed to allow time for.
+    """
+    if delay_hours <= 0:
+        return None
     now = now or datetime.now(timezone.utc)
     return (now + timedelta(hours=delay_hours)).replace(microsecond=0).isoformat().replace(
         "+00:00", "Z"

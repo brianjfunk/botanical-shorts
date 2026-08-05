@@ -175,8 +175,13 @@ upload:
   # -- worth doing before any large batch.
   enabled: true
   privacy_status: "private"
-  # The passive veto window -- auto-publishes unless pulled in Studio.
-  publish_delay_hours: 24
+  # 0 means no schedule: uploads land private and stay private until published
+  # by hand. The passive veto window made sense when one plate went up a day --
+  # it bought time to pull a bad one. A reviewed batch does not need it: the
+  # judgement it was buying time for has already happened on the review page,
+  # and fifteen uploads sharing one deadline would all go public at the same
+  # moment. Set a positive number to restore auto-publishing.
+  publish_delay_hours: 0
   # 22 = People & Blogs. 27 = Education.
   category_id: "27"
   tags:
