@@ -125,21 +125,20 @@ vision:
   caption_mode: "log_only"
   # Scan quality IS enforced from day one.
   min_scan_quality: 7
-  # Bounds spend if the pool is full of poor scans on a given day. Counts only
-  # calls that returned a verdict -- a call that failed outright is retried and
-  # then charged against a separate, much smaller error allowance, so an API
-  # wobble cannot silently spend the budget on nothing. That is how the first
-  # real batch exhausted 12 calls while getting only 9 answers.
+  # PER CATEGORY, not per run. The first mixed sweep shared one budget of 250
+  # across seven categories, drained it in config order, and returned zero
+  # plates for Herpetology and Mycology while reporting nothing wrong -- the
+  # exact starvation the per-category candidate budget exists to prevent,
+  # applied to the more expensive resource by an oversight.
   #
-  # Raised from 12 once per-work fatigue stopped a single black-backdrop volume
-  # consuming an entire walk: the budget now gets spent on plates from many
-  # different works rather than on eighteen views of the same bad scan.
-  # Now a per-HARVEST budget rather than a per-plate one, which is what makes
-  # it meaningful: the harvest spends one call per plate that cleared the cheap
-  # local gates, once per refill, instead of spending them on whatever a
-  # first-match walk tripped over while hunting. At Sonnet rates this is a
-  # dollar or two per refill, and a refill lasts weeks.
-  max_vision_calls: 250
+  # Counts only calls that returned a verdict: a call that failed outright is
+  # retried and then charged against a separate, much smaller error allowance,
+  # so an API wobble cannot silently spend the budget on nothing.
+  #
+  # Seven categories at 70 is 490 calls worst case, a few dollars at Sonnet
+  # rates, for a queue that lasts weeks. The plates a run never reaches stay in
+  # the pool for the next refill.
+  max_vision_calls: 70
   # Only the retired batch path reads this. The harvest has no mid-walk budget
   # crisis to work around: it inspects what it can afford and stops, and the
   # plates it never reached are simply still in the pool for the next refill.

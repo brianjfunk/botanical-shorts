@@ -23,6 +23,10 @@ on:
         description: "harvest only: candidates to walk per category"
         type: string
         default: "250"
+      only:
+        description: "harvest only: comma-separated categories (blank = all)"
+        type: string
+        default: ""
       decision:
         description: "approve only: the line from the review page"
         type: string
@@ -69,9 +73,10 @@ jobs:
           BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           PER_CATEGORY: ${{ inputs.per_category }}
+          ONLY: ${{ inputs.only }}
         run: |
           python -m botanical_shorts.cli -v harvest \
-            --per-category "${PER_CATEGORY:-250}"
+            --per-category "${PER_CATEGORY:-250}" ${ONLY:+--only "$ONLY"}
 
       - name: Approve
         if: inputs.mode == 'approve'

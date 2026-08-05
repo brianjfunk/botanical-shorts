@@ -625,7 +625,10 @@ def cmd_harvest(args: argparse.Namespace) -> int:
     q = Queue(_queue_path(cfg))
 
     result = harvest_mod.harvest_all(
-        cfg, per_category=args.per_category, known_pages=q.page_ids
+        cfg,
+        per_category=args.per_category,
+        known_pages=q.page_ids,
+        only=[c.strip() for c in (args.only or "").split(",") if c.strip()],
     )
 
     for line in pipeline.summarise_rejections(result.rejections):
@@ -1167,6 +1170,10 @@ def main(argv: list[str] | None = None) -> int:
         default=250,
         help="candidates to walk per category; each gets its own budget so the "
              "big categories cannot crowd out the small ones",
+    )
+    p_harv.add_argument(
+        "--only",
+        help="comma-separated category names, to top up ones a previous run starved",
     )
     p_harv.add_argument("--out", help="output directory for the review page")
     p_harv.set_defaults(func=cmd_harvest)

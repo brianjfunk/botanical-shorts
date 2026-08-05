@@ -2451,3 +2451,54 @@ def test_an_older_verdict_without_the_field_still_passes():
     old = VisionVerdict(9, True, True, True, False, "Iris", [])
     assert old.depicts_organism is True
     assert passes(old, min_quality=7, caption_mode="log_only")[0]
+
+
+def test_every_category_gets_its_own_vision_budget(tmp_path, monkeypatch):
+    """The first mixed sweep shared one budget of 250 across seven categories,
+    drained it in config order, and returned zero plates for Herpetology and
+    Mycology while reporting nothing wrong."""
+    import dataclasses
+
+    from botanical_shorts import harvest as h
+
+    seen_budgets: list[int] = []
+    real = h.harvest
+
+    def spy(cfg, **kw):
+        seen_budgets.append(cfg.vision.max_vision_calls)
+        return h.HarvestResult()
+
+    monkeypatch.setattr(h, "harvest", spy)
+    cfg = _cfg_for_stub(history_path=tmp_path / "h.json")
+    cfg = dataclasses.replace(
+        cfg,
+        vision=dataclasses.replace(cfg.vision, enabled=False, max_vision_calls=70),
+        source=dataclasses.replace(
+            cfg.source, categories={"A": ["a"], "B": ["b"], "C": ["c"]}
+        ),
+    )
+
+    h.harvest_all(cfg, per_category=10)
+    assert seen_budgets == [70, 70, 70], "a later category must not inherit a spent budget"
+
+
+def test_harvest_can_top_up_named_categories_only(tmp_path, monkeypatch):
+    import dataclasses
+
+    from botanical_shorts import harvest as h
+
+    walked: list[str] = []
+    monkeypatch.setattr(
+        h, "harvest", lambda cfg, **kw: (walked.append(kw["category"]), h.HarvestResult())[1]
+    )
+    cfg = _cfg_for_stub(history_path=tmp_path / "h.json")
+    cfg = dataclasses.replace(
+        cfg,
+        vision=dataclasses.replace(cfg.vision, enabled=False),
+        source=dataclasses.replace(
+            cfg.source, categories={"A": ["a"], "B": ["b"], "C": ["c"]}
+        ),
+    )
+
+    h.harvest_all(cfg, per_category=10, only=["B", "C"])
+    assert walked == ["B", "C"]

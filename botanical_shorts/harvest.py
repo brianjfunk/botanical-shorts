@@ -259,21 +259,28 @@ def harvest_all(
     *,
     per_category: int,
     known_pages: Iterable[str] = (),
+    only: Iterable[str] = (),
 ) -> HarvestResult:
-    """Harvest every configured category, each with its own candidate budget.
+    """Harvest every configured category, each with its own budget.
+
+    ``only`` restricts the sweep to named categories, for topping up the ones a
+    previous run starved without paying to re-walk the rest.
 
     Sequential rather than combined, because the categories are wildly uneven:
     Ornithology carries 6,730 titles against Mycology's 640, and one walk over
     the flattened heading list would spend everything on whichever came first
     and report the rest as empty.
 
-    The vision budget is shared and drains as the sweep runs, so a later
-    category can find it spent. That is why the budget is generous and the
-    per-category limit modest: the plates a run never reached are still in the
-    pool, and the next refill starts where this one gave up.
+    The vision budget is per category too, and that is not an optimisation --
+    the first sweep shared one budget across the seven, drained it in config
+    order, and returned zero plates for Herpetology and Mycology while
+    reporting nothing wrong. Starving the last category is exactly the failure
+    the per-category candidate budget exists to prevent, so the same rule
+    applies to the more expensive resource.
     """
     import requests as _requests
 
+    only = {str(o) for o in only}
     combined = HarvestResult()
     session = _requests.Session()
     vision_client = None
@@ -284,20 +291,15 @@ def harvest_all(
 
     seen = set(str(p) for p in known_pages)
 
-    for name, headings in cfg.source.categories.items():
-        remaining = cfg.vision.max_vision_calls - combined.vision_calls
-        if cfg.vision.enabled and remaining <= 0:
-            log.warning("vision budget spent; %s and later categories skipped", name)
-            break
-
+    wanted = [
+        (name, headings)
+        for name, headings in cfg.source.categories.items()
+        if not only or name in only
+    ]
+    for name, headings in wanted:
         log.info("=== harvesting %s (%d headings) ===", name, len(headings))
-        import dataclasses as _dc
-
-        scoped = _dc.replace(
-            cfg, vision=_dc.replace(cfg.vision, max_vision_calls=max(0, remaining))
-        )
         result = harvest(
-            scoped,
+            cfg,
             limit=per_category,
             session=session,
             vision_client=vision_client,
