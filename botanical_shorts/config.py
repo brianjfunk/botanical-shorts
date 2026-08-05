@@ -65,6 +65,10 @@ class VisionConfig:
     # rejected (damage, foxing, bleed-through, cut-off plate).
     min_scan_quality: int
     max_vision_calls: int
+    # How many plates per batch may reach review without the model having seen
+    # them, when the call budget runs out mid-walk. Zero restores the old
+    # behaviour of stopping the walk instead.
+    max_uninspected_per_batch: int = 0
 
 
 @dataclass(frozen=True)

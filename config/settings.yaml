@@ -95,6 +95,13 @@ vision:
   # consuming an entire walk: the budget now gets spent on plates from many
   # different works rather than on eighteen views of the same bad scan.
   max_vision_calls: 25
+  # The pool audit showed a group of plates that cleared every local gate and
+  # were never inspected because the budget ran out -- and Brian's read was
+  # that they were decent images. Rather than stopping the walk there, a few
+  # per batch go to review flagged, since a human is already looking. Capped,
+  # because in a bad stretch of the pool the model rejects nearly everything it
+  # sees, and the overflow there is not a windfall.
+  max_uninspected_per_batch: 3
 
 image:
   width: 1080

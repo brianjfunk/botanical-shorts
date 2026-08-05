@@ -1762,3 +1762,113 @@ def test_subject_coverage_ignores_a_speck_of_foxing_in_the_corner():
         for y in range(20, 34):
             img.putpixel((x, y), (60, 50, 45))
     assert abs(imaging.subject_ink_coverage(img) - before) < 0.05
+
+
+# -- plates the model never saw ----------------------------------------------
+#
+# The pool audit surfaced a group that cleared every local gate and was never
+# inspected, because the call budget ran out mid-walk. Brian's read was that
+# they were decent images, and that a few per batch could go to the review pass
+# he is already doing. The walk used to stop dead at that point instead, which
+# is part of why a batch of ten produced two.
+
+def test_the_walk_stops_at_the_budget_when_nobody_is_reviewing(tmp_path, monkeypatch):
+    """The unattended run must never publish a plate nobody looked at."""
+    import dataclasses
+
+    from botanical_shorts import pipeline
+
+    works = [{"title_id": f"T{i}", "item_id": f"I{i}", "page_ids": [f"p{i}"]} for i in range(4)]
+    plates = {f"p{i}": make_plate(900, 1200) for i in range(4)}
+    _install_stub_pool(monkeypatch, works, plates, None)
+    cfg = _cfg_for_stub(history_path=tmp_path / "h.json")
+    cfg = dataclasses.replace(cfg, vision=dataclasses.replace(cfg.vision, max_vision_calls=1))
+
+    monkeypatch.setattr(
+        pipeline,
+        "inspect_plate",
+        lambda c, i, *, model, attempts=2: VisionVerdict(
+            9, True, True, False, False, "text page", []
+        ),
+    )
+
+    result = pipeline.select_and_build(
+        cfg, history=History(tmp_path / "h.json"), dry_run=True, vision_client=object()
+    )
+    assert not result.accepted
+    assert any("budget exhausted" in r.reason for r in result.rejections)
+
+
+def test_an_uninspected_plate_reaches_review_flagged(tmp_path, monkeypatch):
+    import dataclasses
+
+    from botanical_shorts import pipeline
+
+    works = [{"title_id": f"T{i}", "item_id": f"I{i}", "page_ids": [f"p{i}"]} for i in range(4)]
+    plates = {f"p{i}": make_plate(900, 1200) for i in range(4)}
+    _install_stub_pool(monkeypatch, works, plates, None)
+    cfg = _cfg_for_stub(history_path=tmp_path / "h.json", output_dir=tmp_path / "b")
+    cfg = dataclasses.replace(cfg, vision=dataclasses.replace(cfg.vision, max_vision_calls=1))
+
+    monkeypatch.setattr(
+        pipeline,
+        "inspect_plate",
+        lambda c, i, *, model, attempts=2: VisionVerdict(
+            9, True, True, False, False, "text page", []
+        ),
+    )
+
+    result = pipeline.select_and_build(
+        cfg,
+        history=History(tmp_path / "h.json"),
+        dry_run=True,
+        vision_client=object(),
+        allow_uninspected=True,
+    )
+    assert result.accepted
+    assert result.summary["inspected"] is False
+    # No verdict means no verdict-derived fields to pretend otherwise.
+    assert "scan_quality" not in result.summary
+
+
+def test_the_review_page_marks_what_the_model_never_saw():
+    from botanical_shorts import review
+
+    page = review.render(
+        [
+            {"title": "Seen", "citation": "", "inspected": True},
+            {"title": "Unseen", "citation": "", "inspected": False},
+        ],
+        [Image.new("RGB", (60, 90), (230, 220, 200))] * 2,
+    )
+    assert page.count('class="flag"') == 1
+    assert "unchecked" in page
+
+
+def test_a_batch_caps_how_many_uninspected_plates_it_will_offer(tmp_path, monkeypatch):
+    """In a bad stretch the model rejects nearly everything it sees, so the
+    overflow past the budget is not a windfall."""
+    import dataclasses
+
+    from botanical_shorts import pipeline
+
+    works = [{"title_id": f"T{i}", "item_id": f"I{i}", "page_ids": [f"p{i}"]} for i in range(12)]
+    plates = {f"p{i}": make_plate(900, 1200) for i in range(12)}
+    _install_stub_pool(monkeypatch, works, plates, None)
+    cfg = _cfg_for_stub(history_path=tmp_path / "h.json", output_dir=tmp_path / "b")
+    cfg = dataclasses.replace(
+        cfg,
+        vision=dataclasses.replace(
+            cfg.vision, max_vision_calls=0, max_uninspected_per_batch=2
+        ),
+    )
+
+    monkeypatch.setattr(
+        pipeline,
+        "inspect_plate",
+        lambda c, i, *, model, attempts=2: pytest.fail("budget is zero; must not be called"),
+    )
+
+    batch = pipeline.build_batch(cfg, count=8)
+    assert len(batch) == 2
+    assert all(e["inspected"] is False for e in batch)

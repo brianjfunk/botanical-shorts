@@ -54,10 +54,19 @@ def render(entries: Sequence[dict[str, Any]], images: Sequence[Image.Image]) -> 
     for i, (entry, img) in enumerate(zip(entries, images)):
         title = html.escape(str(entry.get("title", "")))
         citation = html.escape(str(entry.get("citation", ""))[:160])
+        # A plate the model never saw, because the call budget ran out mid-walk.
+        # It cleared every mechanical gate, so it is not junk -- but it has had
+        # no judgement about whether it is a picture at all, which is exactly
+        # the judgement this page exists to supply. Marked rather than hidden.
+        flag = (
+            '<span class="flag">unchecked</span>'
+            if not entry.get("inspected", True)
+            else ""
+        )
         cards.append(
             f'<figure class="card" data-i="{i}" onclick="t({i})">'
             f'<img src="{_thumb_data_uri(img)}" alt="{title}" loading="lazy">'
-            f'<span class="mark">✕</span>'
+            f'{flag}<span class="mark">✕</span>'
             f"<figcaption><b>{i + 1}.</b> {title}<small>{citation}</small></figcaption>"
             f"</figure>"
         )
@@ -87,6 +96,10 @@ def render(entries: Sequence[dict[str, Any]], images: Sequence[Image.Image]) -> 
                  background: #b0303099; font-weight: 700; }}
   .card.out {{ opacity: .45; }}
   .card.out .mark {{ display: flex; }}
+  .card .flag {{ position: absolute; top: .35rem; left: .35rem; z-index: 1;
+                 background: #8a5a1f; color: #fff; font-size: .6rem;
+                 letter-spacing: .04em; text-transform: uppercase;
+                 padding: .12rem .3rem; border-radius: 3px; }}
   .card figcaption {{ font-size: .72rem; padding: .35rem .45rem .5rem;
                       color: #6b6252; }}
   .card figcaption small {{ display: block; opacity: .8; margin-top: .15rem; }}
@@ -102,7 +115,8 @@ def render(entries: Sequence[dict[str, Any]], images: Sequence[Image.Image]) -> 
 
 <h1>Batch review — {len(entries)} plates</h1>
 <p class="lead">Tap any plate to reject it. Then copy the line at the bottom and send it back.
-Rejected plates are never offered again.</p>
+Rejected plates are never offered again. Anything marked <b>unchecked</b> cleared the
+mechanical gates but was never seen by the model &mdash; worth a longer look.</p>
 
 <div class="grid">{"".join(cards)}</div>
 

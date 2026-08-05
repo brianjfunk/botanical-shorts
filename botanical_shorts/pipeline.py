@@ -75,7 +75,9 @@ def check_image_gates(img: Image.Image, cfg: Config) -> None:
     imaging.check_source_resolution(img, cfg.image.min_source_width, cfg.image.min_source_height)
     imaging.check_aspect(img, cfg.image.max_source_aspect)
     imaging.check_border_tone(img, cfg.image.min_border_luminance)
-    imaging.check_ink_coverage(img, cfg.image.min_ink_coverage)
+    imaging.check_ink_coverage(
+        img, cfg.image.min_ink_coverage, cfg.image.min_subject_ink_coverage
+    )
 
 
 def select_and_build(
@@ -86,8 +88,15 @@ def select_and_build(
     vision_client: Any = None,
     dry_run: bool = False,
     blocked_pages: set[str] | None = None,
+    allow_uninspected: bool = False,
 ) -> RunResult:
     """Find one publishable plate and produce the framed still and video.
+
+    ``allow_uninspected`` lets a plate that cleared every local gate be accepted
+    when the vision budget is spent, flagged in the summary so a reviewer knows
+    the model never saw it. Only a caller with a human in the loop may set it:
+    the unattended daily run must never publish something nobody looked at, so
+    it holds instead, which is the same fallback the batch flow already takes.
 
     ``blocked_pages`` is an optional caller-owned set of pages already known to
     fail a gate. Every gate here is deterministic given the scan, so a page
@@ -98,7 +107,9 @@ def select_and_build(
     session = session or requests.Session()
     client = bhl.BHLClient(require_env("BHL_API_KEY"), session=session)
 
-    if cfg.vision.enabled and vision_client is None:
+    # Built only when a call could actually be made: a run with no budget left
+    # would otherwise demand an ANTHROPIC_API_KEY to do nothing with.
+    if cfg.vision.enabled and cfg.vision.max_vision_calls > 0 and vision_client is None:
         vision_client = _anthropic_client()
 
     rejections: list[Rejection] = []
@@ -169,12 +180,25 @@ def select_and_build(
         vision_verdict: VisionVerdict | None = None
         if cfg.vision.enabled:
             if vision_calls >= cfg.vision.max_vision_calls:
-                rejections.append(Rejection(page_id, "vision", "vision call budget exhausted"))
-                break
-            # A rejected credential is fatal, not a property of this candidate;
-            # let it propagate rather than burning the budget on every plate.
-            vision_verdict = inspect_plate(vision_client, img, model=cfg.vision.model)
-            if vision_verdict.error:
+                if not allow_uninspected:
+                    rejections.append(
+                        Rejection(page_id, "vision", "vision call budget exhausted")
+                    )
+                    break
+                log.warning(
+                    "page %s cleared every local gate but the vision budget is spent; "
+                    "passing it to review uninspected",
+                    page_id,
+                )
+                uninspected = True
+            else:
+                uninspected = False
+                # A rejected credential is fatal, not a property of this
+                # candidate; let it propagate rather than burning the budget on
+                # every plate.
+                vision_verdict = inspect_plate(vision_client, img, model=cfg.vision.model)
+
+            if not uninspected and vision_verdict.error:
                 # Not a verdict on the plate, so it does not spend the call
                 # budget and does not retire the page: the plate goes back in
                 # the pool for a later run to judge.
@@ -190,46 +214,54 @@ def select_and_build(
                     )
                     break
                 continue
-            vision_calls += 1
+            if not uninspected:
+                vision_calls += 1
 
-            # A spread is half a good plate, not a bad one. Cutting at the fold
-            # keeps the illustrated leaf whole -- caption included -- and drops
-            # the facing page of letterpress, which is the frame Brian asked
-            # for when he caught the agapanthus by eye.
-            if vision_verdict.is_spread and vision_verdict.illustration_side in {"left", "right"}:
-                try:
-                    half = imaging.split_spread(img, vision_verdict.illustration_side)
-                    check_image_gates(half, cfg)
-                except imaging.ImageError as exc:
-                    rejections.append(
-                        Rejection(page_id, "split", f"spread could not be split: {exc}")
+                # A spread is half a good plate, not a bad one. Cutting at the
+                # fold keeps the illustrated leaf whole -- caption included --
+                # and drops the facing page of letterpress, which is the frame
+                # Brian asked for when he caught the agapanthus by eye.
+                if (
+                    vision_verdict.is_spread
+                    and vision_verdict.illustration_side in {"left", "right"}
+                ):
+                    try:
+                        half = imaging.split_spread(img, vision_verdict.illustration_side)
+                        check_image_gates(half, cfg)
+                    except imaging.ImageError as exc:
+                        rejections.append(
+                            Rejection(page_id, "split", f"spread could not be split: {exc}")
+                        )
+                        strike(candidate)
+                        continue
+                    log.info(
+                        "page %s is a spread; kept the %s half (%dx%d from %dx%d)",
+                        page_id,
+                        vision_verdict.illustration_side,
+                        half.width,
+                        half.height,
+                        img.width,
+                        img.height,
                     )
+                    img = half
+
+                ok, reason = passes(
+                    vision_verdict,
+                    min_quality=cfg.vision.min_scan_quality,
+                    caption_mode=cfg.vision.caption_mode,
+                    # Already handled above by taking one half; rejecting it
+                    # here would throw away the plate just recovered.
+                    allow_spread=vision_verdict.illustration_side in {"left", "right"},
+                )
+                if not ok:
+                    rejections.append(Rejection(page_id, "vision", reason))
                     strike(candidate)
                     continue
-                log.info(
-                    "page %s is a spread; kept the %s half (%dx%d from %dx%d)",
-                    page_id,
-                    vision_verdict.illustration_side,
-                    half.width,
-                    half.height,
-                    img.width,
-                    img.height,
-                )
-                img = half
-
-            ok, reason = passes(
-                vision_verdict,
-                min_quality=cfg.vision.min_scan_quality,
-                caption_mode=cfg.vision.caption_mode,
-                # Already handled above by taking one half; rejecting it here
-                # would throw away the plate that was just recovered.
-                allow_spread=vision_verdict.illustration_side in {"left", "right"},
-            )
-            if not ok:
-                rejections.append(Rejection(page_id, "vision", reason))
-                strike(candidate)
-                continue
-            if cfg.vision.caption_mode == "log_only" and not vision_verdict.caption_embedded:
+            if (
+                vision_verdict is not None
+                and cfg.vision.caption_mode == "log_only"
+                and not vision_verdict.caption_embedded
+            ):
                 # Recorded, deliberately not enforced in v1.
                 log.info(
                     "page %s has no plate-embedded lettering; accepting anyway (caption_mode=log_only)",
@@ -291,6 +323,10 @@ def select_and_build(
             # published from a different, later run on a fresh machine, so
             # everything the frame depends on has to travel in the manifest.
             "candidate": _candidate_fields(candidate),
+            # False when the vision budget ran out before this plate. The
+            # review page marks these, because the only judgement they have
+            # had is the mechanical one.
+            "inspected": vision_verdict is not None,
         }
         if vision_verdict:
             summary.update(
@@ -509,7 +545,19 @@ def build_batch(cfg: Config, *, count: int) -> list[dict[str, Any]]:
 
     for n in range(count):
         log.info("--- selecting %d of %d ---", n + 1, count)
-        result = select_and_build(cfg, history=history, dry_run=True, blocked_pages=blocked)
+        # A plate the model never saw may still go to review, but only a few
+        # per batch. In a good stretch of the pool an uninspected plate is
+        # probably fine; in a bad one the model was rejecting everything it saw,
+        # and letting the overflow through unchecked would fill the review page
+        # with exactly what the gate was catching.
+        uninspected = sum(1 for e in batch if not e.get("inspected", True))
+        result = select_and_build(
+            cfg,
+            history=history,
+            dry_run=True,
+            blocked_pages=blocked,
+            allow_uninspected=uninspected < cfg.vision.max_uninspected_per_batch,
+        )
         if not result.accepted:
             # Report *why*, the way _run_once does. A batch that stops short is
             # indistinguishable from an empty pool without this, and the
