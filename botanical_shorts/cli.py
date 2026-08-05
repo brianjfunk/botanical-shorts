@@ -18,6 +18,8 @@ from pathlib import Path
 from . import bhl, imaging, licensing, pipeline
 from .config import ConfigError, load_config, optional_env, require_env
 
+log = logging.getLogger(__name__)
+
 
 def _setup_logging(verbose: bool) -> None:
     logging.basicConfig(
@@ -565,6 +567,106 @@ def cmd_page_info(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sample_plates(args: argparse.Namespace) -> int:
+    """Render a contact sheet of what a subject actually publishes.
+
+    Every gate in this pipeline is a proxy for a judgement someone would make
+    by looking. Counting titles says a category is *supplied*; it says nothing
+    about whether the plates suit the channel -- 'Reptiles, Fossil' has 260
+    titles of bone diagrams. This runs the real licence and image gates and
+    shows the frames, so that call is made by eye before a category goes live
+    rather than after.
+
+    Skips the vision gate deliberately: it is the expensive one, and seeing
+    what the cheap gates let through is the more useful signal when deciding
+    whether a subject belongs at all.
+    """
+    import requests
+    from PIL import Image
+
+    cfg = load_config(args.config)
+    session = requests.Session()
+    client = bhl.BHLClient(require_env("BHL_API_KEY"), session=session)
+
+    label = args.label or args.subjects[0].replace(" ", "-").replace(",", "").lower()
+    out_dir = Path(args.out) if args.out else Path("samples") / label
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    candidates = bhl.iter_candidates(
+        client,
+        subjects=args.subjects,
+        page_types=cfg.source.page_types,
+        year_min=cfg.source.year_min,
+        year_max=cfg.source.year_max,
+        titles_per_subject=cfg.source.titles_per_subject,
+        max_items_per_title=cfg.source.max_items_per_title,
+        max_pages_per_item=cfg.source.max_pages_per_item,
+        limit=args.limit,
+    )
+
+    kept: list[tuple[Image.Image, bhl.PageCandidate]] = []
+    seen_titles: set[str] = set()
+    rejected = 0
+    for cand in candidates:
+        if len(kept) >= args.count:
+            break
+        # One per work, so the sheet shows the breadth of a subject rather
+        # than six pages of whichever book happens to sort first.
+        if cand.title_id in seen_titles:
+            continue
+        if not licensing.evaluate(cand, cfg.license).allowed:
+            continue
+        try:
+            img = imaging.load_image(bhl.download_page_image(cand, session=session))
+            imaging.check_source_resolution(
+                img, cfg.image.min_source_width, cfg.image.min_source_height
+            )
+            imaging.check_aspect(img, cfg.image.max_source_aspect)
+            imaging.check_border_tone(img, cfg.image.min_border_luminance)
+            imaging.check_ink_coverage(img, cfg.image.min_ink_coverage)
+            framed = imaging.frame_vertical(
+                img,
+                width=cfg.image.width,
+                height=cfg.image.height,
+                margin_ratio=cfg.image.margin_ratio,
+                letterbox=cfg.image.letterbox,
+                fixed_fill_color=cfg.image.fixed_fill_color,
+                border_px=cfg.image.border_px,
+                border_color=cfg.image.border_color,
+            )
+        except Exception as exc:
+            rejected += 1
+            log.debug("page %s rejected: %s", cand.page_id, exc)
+            continue
+        seen_titles.add(cand.title_id)
+        kept.append((framed.image, cand))
+        print(f"   {len(kept):2}. page {cand.page_id}  {cand.title[:60]}")
+
+    if not kept:
+        print(f"no plates passed the gates for {args.subjects}", file=sys.stderr)
+        return 1
+
+    # Contact sheet: one image is far easier to review than N files, on a
+    # phone especially.
+    cols = min(6, len(kept))
+    rows = (len(kept) + cols - 1) // cols
+    tw, th = 300, 533  # 9:16
+    sheet = Image.new("RGB", (cols * tw, rows * th), (245, 240, 230))
+    for i, (frame, _) in enumerate(kept):
+        sheet.paste(frame.resize((tw, th), Image.LANCZOS), ((i % cols) * tw, (i // cols) * th))
+    sheet_path = out_dir / "contact-sheet.png"
+    sheet.save(sheet_path)
+
+    (out_dir / "sources.txt").write_text(
+        f"Subjects: {', '.join(args.subjects)}\n"
+        f"{len(kept)} plates shown, {rejected} rejected by the gates\n\n"
+        + "\n".join(f"- {c.citation()} ({c.page_url})" for _, c in kept)
+        + "\n"
+    )
+    print(f"\n{len(kept)} plates, {rejected} rejected -> {sheet_path}")
+    return 0
+
+
 def cmd_channel_art(args: argparse.Namespace) -> int:
     """Build the channel banner and profile picture from real plates.
 
@@ -686,6 +788,14 @@ def main(argv: list[str] | None = None) -> int:
     p_page = sub.add_parser("page-info", help="resolve page ids to their volume and work")
     p_page.add_argument("page_ids", nargs="+", help="BHL page ids to look up")
     p_page.set_defaults(func=cmd_page_info)
+
+    p_samp = sub.add_parser("sample-plates", help="contact sheet of what a subject publishes")
+    p_samp.add_argument("subjects", nargs="+", help="BHL subject headings to sample")
+    p_samp.add_argument("--count", type=int, default=12, help="plates to show")
+    p_samp.add_argument("--limit", type=int, default=400, help="candidates to walk")
+    p_samp.add_argument("--label", help="output folder name under samples/")
+    p_samp.add_argument("--out", help="output directory")
+    p_samp.set_defaults(func=cmd_sample_plates)
 
     p_art = sub.add_parser("channel-art", help="build the channel banner and profile picture")
     p_art.add_argument(

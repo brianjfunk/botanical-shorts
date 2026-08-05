@@ -1,0 +1,92 @@
+name: Sample plates
+
+# Renders a contact sheet of what a subject would actually publish, running
+# the real licence and image gates, and commits it so it can be reviewed on
+# github.com from a phone.
+#
+# Exists because counting titles answers whether a category is *supplied* and
+# says nothing about whether it suits the channel: 'Reptiles, Fossil' has 260
+# titles of bone diagrams. Deciding that by eye before a category goes live is
+# far cheaper than deciding it after.
+
+on:
+  workflow_dispatch:
+    inputs:
+      subjects:
+        description: "BHL subject headings, space-separated (quote multi-word)"
+        type: string
+        required: true
+      label:
+        description: "Folder name under samples/ (blank = derived from the first subject)"
+        type: string
+        default: ""
+      count:
+        description: "How many plates to show"
+        type: string
+        default: "12"
+
+concurrency:
+  group: sample-plates
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Render the contact sheet
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+        run: |
+          if [ -z "$BHL_API_KEY" ]; then
+            echo "::error::BHL_API_KEY is not set."
+            exit 1
+          fi
+          ARGS="--count ${{ inputs.count || '12' }}"
+          if [ -n "${{ inputs.label }}" ]; then
+            ARGS="$ARGS --label ${{ inputs.label }}"
+          fi
+          python -m botanical_shorts.cli -v sample-plates ${{ inputs.subjects }} $ARGS
+
+      - name: Commit the samples
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Stage before testing for changes: git diff ignores untracked files,
+          # so a brand-new sample folder would read as "nothing to do".
+          git add samples/
+          if git diff --cached --quiet -- samples/; then
+            echo "samples unchanged"
+            exit 0
+          fi
+          git commit -m "Sample plates: ${{ inputs.subjects }}"
+          for attempt in 1 2 3; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
+              git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $((attempt * 4))
+          done
+          echo "::error::could not push the samples"
+          exit 1
+
+      - name: Upload the samples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sample-plates
+          path: samples/
+          if-no-files-found: ignore
+          retention-days: 30
