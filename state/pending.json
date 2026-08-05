@@ -1,0 +1,120 @@
+[
+  {
+    "page_id": "54760696",
+    "item_id": "239249",
+    "title_id": "130319",
+    "title": "Dichorisandra ovata",
+    "description": "Dichorisandra ovata.\n\nSource\nPortefeuille des horticulteurs. J.-B. Gros, Rue du Foin Saint-Jacques, 18. Biodiversity Heritage Library.\nhttps://www.biodiversitylibrary.org/page/54760696\nDigitised by Internet Archive.\n\nRights: Public domain. The BHL considers that this work is no longer under copyright protection.\n\nPresented as scanned, with no added text or digital retouching.",
+    "citation": "Portefeuille des horticulteurs. J.-B. Gros, Rue du Foin Saint-Jacques, 18. Biodiversity Heritage Library.",
+    "page_url": "https://www.biodiversitylibrary.org/page/54760696",
+    "thumb_url": "https://www.biodiversitylibrary.org/pagethumb/54760696",
+    "subject": "Botanical illustration",
+    "rights": "Public domain. The BHL considers that this work is no longer under copyright protection.",
+    "license": "",
+    "licence_reason": "public-domain status 'Public domain. The BHL considers that this work is no longer under copyright protection.'",
+    "source_size": [
+      1263,
+      2365
+    ],
+    "plate_size": [
+      902,
+      1689
+    ],
+    "fill_color": [
+      226,
+      202,
+      194
+    ],
+    "upscaled": false,
+    "letterbox": "sampled_paper",
+    "duration_seconds": 2.0,
+    "candidate": {
+      "page_id": "54760696",
+      "item_id": "239249",
+      "title_id": "130319",
+      "title": "Portefeuille des horticulteurs",
+      "year": "",
+      "publisher": "J.-B. Gros, Rue du Foin Saint-Jacques, 18",
+      "authors": [],
+      "page_types": [
+        "Illustration"
+      ],
+      "rights": "Public domain. The BHL considers that this work is no longer under copyright protection.",
+      "license_name": "",
+      "license_url": "",
+      "source": "Internet Archive",
+      "subject": "Botanical illustration"
+    },
+    "scan_quality": 8,
+    "caption_embedded": true,
+    "species_name_visible": true,
+    "is_spread": false,
+    "subject_summary": "Dichorisandra ovata",
+    "vision_issues": [
+      "faint pencil sketch visible beside plate",
+      "slight paper toning"
+    ],
+    "caption_mode": "log_only",
+    "image_path": "/home/runner/work/botanical-shorts/botanical-shorts/build/20260805-54760696.png"
+  },
+  {
+    "page_id": "53615638",
+    "item_id": "227613",
+    "title_id": "132203",
+    "title": "Hen & Chicken Daisy (1760)",
+    "description": "Hen & Chicken Daisy.\n\nSource\nThe florist : containing sixty plates of the most beautiful flowers regularly disposed in their succession of blowing. To which is added an accurate description of their colours with instructions for drawing and painting according to nature : being a new work intended for the use & amusement of gentlemen and ladies delighting in that art. Sayer, Robert. 1760. Printed for Robt. Sayer ..., T. Bowles ..., John Bowles & Son. Biodiversity Heritage Library.\nhttps://www.biodiversitylibrary.org/page/53615638\nDigitised by Internet Archive.\n\nRights: Public domain. The BHL considers that this work is no longer under copyright protection.\n\nPresented as scanned, with no added text or digital retouching.",
+    "citation": "The florist : containing sixty plates of the most beautiful flowers regularly disposed in their succession of blowing. To which is added an accurate description of their colours with instructions for drawing and painting according to nature : being a new work intended for the use & amusement of gentlemen and ladies delighting in that art. Sayer, Robert. 1760. Printed for Robt. Sayer ..., T. Bowles ..., John Bowles & Son. Biodiversity Heritage Library.",
+    "page_url": "https://www.biodiversitylibrary.org/page/53615638",
+    "thumb_url": "https://www.biodiversitylibrary.org/pagethumb/53615638",
+    "subject": "Botanical illustration",
+    "rights": "Public domain. The BHL considers that this work is no longer under copyright protection.",
+    "license": "",
+    "licence_reason": "public-domain status 'Public domain. The BHL considers that this work is no longer under copyright protection.'",
+    "source_size": [
+      1992,
+      3127
+    ],
+    "plate_size": [
+      950,
+      1491
+    ],
+    "fill_color": [
+      228,
+      192,
+      120
+    ],
+    "upscaled": false,
+    "letterbox": "sampled_paper",
+    "duration_seconds": 2.0,
+    "candidate": {
+      "page_id": "53615638",
+      "item_id": "227613",
+      "title_id": "132203",
+      "title": "The florist : containing sixty plates of the most beautiful flowers regularly disposed in their succession of blowing. To which is added an accurate description of their colours with instructions for drawing and painting according to nature : being a new work intended for the use & amusement of gentlemen and ladies delighting in that art",
+      "year": "1760",
+      "publisher": "Printed for Robt. Sayer ..., T. Bowles ..., John Bowles & Son",
+      "authors": [
+        "Sayer, Robert"
+      ],
+      "page_types": [
+        "Illustration"
+      ],
+      "rights": "Public domain. The BHL considers that this work is no longer under copyright protection.",
+      "license_name": "",
+      "license_url": "",
+      "source": "Internet Archive",
+      "subject": "Botanical illustration"
+    },
+    "scan_quality": 8,
+    "caption_embedded": true,
+    "species_name_visible": true,
+    "is_spread": false,
+    "subject_summary": "Hen & Chicken Daisy",
+    "vision_issues": [
+      "light staining/foxing on right side",
+      "faint vertical crease near center"
+    ],
+    "caption_mode": "log_only",
+    "image_path": "/home/runner/work/botanical-shorts/botanical-shorts/build/20260805-53615638.png"
+  }
+]
