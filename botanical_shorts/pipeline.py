@@ -8,6 +8,7 @@ than scoring the whole pool.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -311,11 +312,9 @@ def _run_once(
     result = select_and_build(cfg, history=history, dry_run=dry_run)
 
     if not result.accepted:
-        log.error(
-            "no publishable plate found; %d candidates rejected", len(result.rejections)
-        )
-        for rej in result.rejections[:20]:
-            log.error("  page %s rejected at %s: %s", rej.page_id, rej.stage, rej.reason)
+        log.error("no publishable plate found")
+        for line in summarise_rejections(result.rejections):
+            log.error("%s", line)
         return result
 
     for rej in result.rejections:
@@ -390,6 +389,53 @@ def _run_once(
 # re-derive it than to carry it.
 
 
+def _reason_key(reason: str) -> str:
+    """Collapse a rejection reason to the kind of thing it is.
+
+    Reasons carry the measurement that produced them -- "border luminance 6 is
+    below 60" -- so counting them raw gives one bucket per candidate. Stripping
+    the numbers turns a list back into a distribution.
+    """
+    import re
+
+    key = re.sub(r"\d+(\.\d+)?", "N", reason)
+    return key[:90]
+
+
+def summarise_rejections(rejections: Sequence[Rejection]) -> list[str]:
+    """Per-stage counts, then the reasons within each stage, commonest first.
+
+    Printing the first N rejections instead -- which is what this replaced --
+    reports whatever the walk happened to meet earliest. On a walk that dies at
+    the vision budget, those are all early download rejections and the vision
+    verdicts that actually stopped it never appear.
+    """
+    if not rejections:
+        return ["no candidates were rejected: the pool itself was empty"]
+
+    by_stage: dict[str, list[Rejection]] = {}
+    for rej in rejections:
+        by_stage.setdefault(rej.stage, []).append(rej)
+
+    order = sorted(by_stage, key=lambda s: -len(by_stage[s]))
+    lines = [
+        "%d candidates rejected: %s"
+        % (
+            len(rejections),
+            ", ".join(f"{s}={len(by_stage[s])}" for s in order),
+        )
+    ]
+    for stage in order:
+        counts: dict[str, int] = {}
+        for rej in by_stage[stage]:
+            key = _reason_key(rej.reason)
+            counts[key] = counts.get(key, 0) + 1
+        lines.append(f"  {stage}:")
+        for key, n in sorted(counts.items(), key=lambda kv: -kv[1])[:8]:
+            lines.append(f"    {n:4} x {key}")
+    return lines
+
+
 def _candidate_fields(cand: bhl.PageCandidate) -> dict[str, Any]:
     return {
         "page_id": cand.page_id,
@@ -426,20 +472,12 @@ def build_batch(cfg: Config, *, count: int) -> list[dict[str, Any]]:
         log.info("--- selecting %d of %d ---", n + 1, count)
         result = select_and_build(cfg, history=history, dry_run=True, blocked_pages=blocked)
         if not result.accepted:
-            # Report *why*, the way _run_once does. A batch that stops at zero
-            # is indistinguishable from an empty pool without this, and the
+            # Report *why*, the way _run_once does. A batch that stops short is
+            # indistinguishable from an empty pool without this, and the
             # rejection list is the only record of which gate did it.
             log.warning("no further plate found; batch stops at %d", len(batch))
-            by_stage: dict[str, int] = {}
-            for rej in result.rejections:
-                by_stage[rej.stage] = by_stage.get(rej.stage, 0) + 1
-            log.warning(
-                "%d candidates rejected: %s",
-                len(result.rejections),
-                ", ".join(f"{k}={v}" for k, v in sorted(by_stage.items())) or "none",
-            )
-            for rej in result.rejections[:25]:
-                log.warning("  page %s at %s: %s", rej.page_id, rej.stage, rej.reason)
+            for line in summarise_rejections(result.rejections):
+                log.warning("%s", line)
             break
 
         entry = dict(result.summary)

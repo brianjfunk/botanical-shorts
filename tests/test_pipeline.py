@@ -1442,3 +1442,36 @@ def test_an_empty_vision_response_is_retried_before_being_believed():
     assert not verdict.error
     assert verdict.scan_quality == 9
     assert client.messages.calls == 2
+
+
+def test_rejection_summary_reports_the_stage_that_stopped_the_walk():
+    """Printing the first N rejections reported whatever the walk met earliest.
+
+    A walk that dies at the vision budget meets download rejections first, so
+    the verdicts that actually stopped it never appeared in the log at all --
+    which is how a batch failure got misread as a thin pool.
+    """
+    from botanical_shorts.pipeline import Rejection, summarise_rejections
+
+    rejections = [
+        Rejection(f"d{i}", "download", f"border luminance {i} is below 60: dark frame")
+        for i in range(40)
+    ] + [
+        Rejection(f"v{i}", "vision", "not a pictorial plate") for i in range(9)
+    ] + [
+        Rejection("v9", "vision", "two facing pages captured together"),
+    ]
+
+    text = "\n".join(summarise_rejections(rejections))
+
+    assert "download=40" in text and "vision=10" in text
+    # Measurements collapse, so forty readings are one line rather than forty.
+    assert "40 x border luminance N is below N: dark frame" in text
+    assert "9 x not a pictorial plate" in text
+    assert "1 x two facing pages captured together" in text
+
+
+def test_rejection_summary_names_an_empty_pool_as_such():
+    from botanical_shorts.pipeline import summarise_rejections
+
+    assert "pool itself was empty" in summarise_rejections([])[0]
