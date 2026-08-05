@@ -302,7 +302,15 @@ def cmd_find_subjects(args: argparse.Namespace) -> int:
         names = _probe(term)
         print(f"   {len(names)} headings returned")
 
-        for name in names[: args.per_term]:
+        # Order matters more than it looks. BHL returns headings roughly
+        # reverse-alphabetically, so slicing the first N tests long compounds
+        # ("wood-boring insects", "willow-feeding insects") and never the base
+        # heading that actually carries the titles. Probe the search term
+        # itself first, then shortest-first, so "Insects" beats "understudied
+        # insects" for a place in the budget.
+        exact = [n for n in names if n.strip().lower() == term.strip().lower()]
+        rest = sorted((n for n in names if n not in exact), key=lambda n: (len(n), n))
+        for name in (exact + rest)[: args.per_term]:
             if name in found:
                 continue
             try:
