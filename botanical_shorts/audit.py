@@ -35,6 +35,7 @@ GROUPS: list[tuple[str, str]] = [
     ("resolution", "Rejected: scan too small"),
     ("download", "Rejected: could not be fetched or decoded"),
     ("vision error", "Vision call failed"),
+    ("split", "Spread that could not be cut cleanly"),
     ("licence", "Rejected on licence (never downloaded)"),
 ]
 

@@ -169,6 +169,77 @@ def frame_vertical(
     )
 
 
+def find_gutter(img: Image.Image, search_ratio: float = 0.16) -> int:
+    """Locate the fold between two facing pages, as an x coordinate.
+
+    A bound volume photographed open has a shadow in the fold, so the gutter is
+    a dark column near the middle -- but so is the engraving, and on a plate
+    that runs close to the fold the engraving is darker. What separates them is
+    shape, not depth: a fold is a *narrow* dark line with paper on both sides,
+    while an engraving is a broad mass with paper on one side only. So each
+    column is scored against the lighter of its two neighbourhoods, and a wide
+    dark region scores nothing however dark it is.
+
+    Falls back to the exact centre when no column stands out, which is right
+    for a flatbed capture with no shadow: the fold is still near the middle,
+    and half of a symmetric spread is the correct crop either way.
+    """
+    w, h = img.size
+    mid = w // 2
+    span = max(1, int(w * search_ratio))
+    lo, hi = max(1, mid - span), min(w - 1, mid + span)
+
+    # One row of column means, cheaply: squash the whole image to a single
+    # pixel high, so a column is summarised by its average darkness.
+    row = img.convert("L").resize((w, 1), Image.BILINEAR)
+    px = row.load()
+    columns = [px[x, 0] for x in range(w)]
+
+    # Far enough out to clear the shadow itself, near enough to still be the
+    # same page rather than the opposite margin.
+    reach = max(4, int(w * 0.02))
+
+    best_x, best_contrast = mid, 0.0
+    for x in range(lo, hi):
+        left = columns[max(0, x - 2 * reach) : max(1, x - reach)]
+        right = columns[min(w - 1, x + reach) : min(w, x + 2 * reach)]
+        if not left or not right:
+            continue
+        # The lighter side is the weaker evidence, so it decides: a plate edge
+        # has paper on one side and ink on the other and scores near zero.
+        contrast = min(sum(left) / len(left), sum(right) / len(right)) - columns[x]
+        if contrast > best_contrast:
+            best_x, best_contrast = x, contrast
+
+    # A real fold is decisively darker than the paper on both sides of it.
+    # Anything shallower is page texture, and the centre is the better guess.
+    return best_x if best_contrast >= 12 else mid
+
+
+def split_spread(img: Image.Image, side: str) -> Image.Image:
+    """Return one half of a two-page capture, cut at the fold.
+
+    This is the one place a source scan is cut, and it is not the cropping the
+    spec forbids: that rule protects the plate's engraved caption from being
+    clipped to fill a frame. Here the cut falls in the gutter *between* two
+    pages, so the plate on the chosen side survives whole, with its own caption
+    intact -- what is discarded is the facing leaf of letterpress.
+    """
+    if side not in {"left", "right"}:
+        raise ImageError(f"cannot split a spread toward {side!r}")
+
+    w, h = img.size
+    gutter = find_gutter(img)
+    # Pull in slightly past the fold so the shadow and the opposite page's
+    # inner margin do not survive at the edge of the crop.
+    inset = max(1, int(w * 0.01))
+    box = (0, 0, max(1, gutter - inset), h) if side == "left" else (min(w - 1, gutter + inset), 0, w, h)
+    half = img.crop(box)
+    if half.width < 1 or half.height < 1:
+        raise ImageError("splitting the spread produced an empty half")
+    return half
+
+
 def _ink_grid(img: Image.Image, grid: int = 160) -> tuple[list[list[float]], int, int, float]:
     """Downscale to a coarse map of how much *ink* each cell holds.
 
@@ -231,18 +302,61 @@ def check_border_tone(img: Image.Image, min_luminance: float) -> None:
         )
 
 
-def check_ink_coverage(img: Image.Image, min_coverage: float) -> None:
+def subject_ink_coverage(img: Image.Image) -> float:
+    """Ink coverage measured inside the inked region rather than across the sheet.
+
+    Whole-sheet coverage conflates *sparse* with *faint*. A single delicate
+    specimen engraved in the middle of a large sheet covers very little of it
+    and reads beautifully; a pencil study covering the same fraction reads as
+    blank. The difference is not how much of the paper is used but how densely
+    the used part is worked, so the region is found first and measured second.
+
+    The bounding box is taken between the 2nd and 98th percentile of inked
+    cells on each axis, so a speck of foxing in a corner cannot stretch the box
+    back out to the whole sheet.
+    """
+    cells, gw, gh, _ = _ink_grid(img)
+    inked = [(x, y) for y in range(gh) for x in range(gw) if cells[y][x] >= MIN_INK_DEPTH]
+    if len(inked) < 4:
+        return 0.0
+
+    def bounds(values: list[int]) -> tuple[int, int]:
+        values = sorted(values)
+        lo = values[int(len(values) * 0.02)]
+        hi = values[min(len(values) - 1, int(len(values) * 0.98))]
+        return lo, hi
+
+    x0, x1 = bounds([x for x, _ in inked])
+    y0, y1 = bounds([y for _, y in inked])
+    area = max(1, (x1 - x0 + 1) * (y1 - y0 + 1))
+    within = sum(1 for x, y in inked if x0 <= x <= x1 and y0 <= y <= y1)
+    return within / area
+
+
+def check_ink_coverage(img: Image.Image, min_coverage: float, min_subject: float = 0.0) -> None:
     """Reject plates too faintly inked to read as a picture.
 
     Distinct from scan quality, which scores the *scan*: a pristine capture of
     a faint pencil study scores highly there and still gives a frame that looks
     empty.
+
+    Two measurements, because one could not separate the cases seen in the pool
+    audit. ``min_coverage`` is a low floor against a genuinely empty sheet;
+    ``min_subject`` asks whether the worked part of the sheet is densely worked,
+    which is what distinguishes a small exact engraving -- rejected wrongly by
+    the single whole-sheet measure -- from a faint sketchbook page.
     """
     coverage = ink_coverage(img)
     if coverage < min_coverage:
         raise ImageError(
             f"only {coverage * 100:.1f}% of the plate carries ink "
             f"(minimum {min_coverage * 100:.1f}%): it would read as blank"
+        )
+    subject = subject_ink_coverage(img)
+    if subject < min_subject:
+        raise ImageError(
+            f"the inked area is only {subject * 100:.1f}% worked "
+            f"(minimum {min_subject * 100:.1f}%): too faint to read as a picture"
         )
 
 

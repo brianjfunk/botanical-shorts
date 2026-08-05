@@ -191,10 +191,39 @@ def select_and_build(
                     break
                 continue
             vision_calls += 1
+
+            # A spread is half a good plate, not a bad one. Cutting at the fold
+            # keeps the illustrated leaf whole -- caption included -- and drops
+            # the facing page of letterpress, which is the frame Brian asked
+            # for when he caught the agapanthus by eye.
+            if vision_verdict.is_spread and vision_verdict.illustration_side in {"left", "right"}:
+                try:
+                    half = imaging.split_spread(img, vision_verdict.illustration_side)
+                    check_image_gates(half, cfg)
+                except imaging.ImageError as exc:
+                    rejections.append(
+                        Rejection(page_id, "split", f"spread could not be split: {exc}")
+                    )
+                    strike(candidate)
+                    continue
+                log.info(
+                    "page %s is a spread; kept the %s half (%dx%d from %dx%d)",
+                    page_id,
+                    vision_verdict.illustration_side,
+                    half.width,
+                    half.height,
+                    img.width,
+                    img.height,
+                )
+                img = half
+
             ok, reason = passes(
                 vision_verdict,
                 min_quality=cfg.vision.min_scan_quality,
                 caption_mode=cfg.vision.caption_mode,
+                # Already handled above by taking one half; rejecting it here
+                # would throw away the plate that was just recovered.
+                allow_spread=vision_verdict.illustration_side in {"left", "right"},
             )
             if not ok:
                 rejections.append(Rejection(page_id, "vision", reason))
@@ -681,14 +710,36 @@ def audit_pool(
             out.append(Audited(page_id, title, "vision error", result.error, thumb))
             continue
         spent += 1
+
+        # Mirrors the selector: a spread that can be cut into one good page is
+        # rescued rather than rejected. The thumbnail becomes the half that
+        # would actually be published, so the split is checkable by eye.
+        split_note = ""
+        if result.is_spread and result.illustration_side in {"left", "right"}:
+            try:
+                half = imaging.split_spread(img, result.illustration_side)
+                check_image_gates(half, cfg)
+            except imaging.ImageError as exc:
+                out.append(Audited(page_id, title, "split", str(exc), thumb))
+                continue
+            thumb = _audit_thumb(half)
+            split_note = f"spread, kept the {result.illustration_side} half -- "
+
         ok, reason = passes(
             result,
             min_quality=cfg.vision.min_scan_quality,
             caption_mode=cfg.vision.caption_mode,
+            allow_spread=bool(split_note),
         )
         note = f"quality {result.scan_quality}/10 -- {result.subject_summary}".strip(" -")
         out.append(
-            Audited(page_id, title, "passed" if ok else "vision", reason if not ok else note, thumb)
+            Audited(
+                page_id,
+                title,
+                "passed" if ok else "vision",
+                split_note + (note if ok else reason),
+                thumb,
+            )
         )
 
     log.info(

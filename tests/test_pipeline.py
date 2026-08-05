@@ -954,7 +954,12 @@ def test_shipped_config_carries_the_ported_gates():
     # dark and browned stock at 70-120, not just the scanner void at 0-6 the
     # check was built for. It cost roughly a quarter of the usable pool.
     assert cfg.image.min_border_luminance == 60
-    assert cfg.image.min_ink_coverage == 0.05
+    # The ink judgement moved off the whole sheet: the pool audit showed the
+    # single 0.05 whole-sheet figure rejecting small exact engravings that sat
+    # in the middle of a large plate. What is left here is a bare floor against
+    # an empty leaf; the real work is done by the subject measure.
+    assert cfg.image.min_ink_coverage == 0.015
+    assert cfg.image.min_subject_ink_coverage == 0.16
     assert cfg.source.title_cooldown == 120
 
 
@@ -1596,3 +1601,164 @@ def test_overlapping_subjects_do_not_walk_the_same_work_twice():
 
     assert [c.page_id for c in got] == ["P1"]
     assert client.title_calls == 1, "the second heading must not re-fetch the work"
+
+
+# -- splitting a two-page capture --------------------------------------------
+#
+# From Brian's pass over the pool audit: "several rejected by the model where
+# half of the page is a beautiful illustration, and half is some text because it
+# looks like it was scanned as an open book". Those were being thrown away
+# whole. The plate is fine -- it just has a facing page attached.
+
+def _spread(illustration_side="left", w=1600, h=1000, shadow=True):
+    """Two facing pages: an engraving on one side, letterpress on the other."""
+    img = Image.new("RGB", (w, h), (232, 222, 201))
+    mid = w // 2
+    plate = (0, mid) if illustration_side == "left" else (mid, w)
+    text = (mid, w) if illustration_side == "left" else (0, mid)
+
+    # The engraving: one dense mass, as a real plate reads.
+    for x in range(plate[0] + 120, plate[1] - 120):
+        for y in range(200, h - 200):
+            img.putpixel((x, y), (45, 40, 35))
+    # Letterpress: regular thin lines of type.
+    for y in range(120, h - 120, 24):
+        for x in range(text[0] + 90, text[1] - 90):
+            for dy in range(8):
+                img.putpixel((x, y + dy), (70, 62, 55))
+    if shadow:
+        for x in range(mid - 6, mid + 6):
+            for y in range(h):
+                img.putpixel((x, y), (30, 26, 22))
+    return img
+
+
+def test_gutter_is_found_at_the_fold_shadow():
+    img = _spread()
+    assert abs(imaging.find_gutter(img) - img.width // 2) <= 12
+
+
+def test_gutter_falls_back_to_centre_without_a_shadow():
+    """A flatbed capture has no fold shadow; the centre is still the right cut."""
+    img = _spread(shadow=False)
+    assert imaging.find_gutter(img) == img.width // 2
+
+
+@pytest.mark.parametrize("side", ["left", "right"])
+def test_split_keeps_the_illustrated_half_and_drops_the_text(side):
+    img = _spread(illustration_side=side)
+    half = imaging.split_spread(img, side)
+
+    assert half.width < img.width * 0.55, "must be one page, not the spread"
+    assert half.height == img.height
+    # The engraved mass survives; the dense block is what makes a plate a plate.
+    assert imaging.ink_coverage(half) > imaging.ink_coverage(
+        imaging.split_spread(img, "right" if side == "left" else "left")
+    )
+
+
+def test_split_refuses_a_side_it_cannot_act_on():
+    for side in ("both", "neither", ""):
+        with pytest.raises(imaging.ImageError):
+            imaging.split_spread(_spread(), side)
+
+
+def test_a_spread_is_rescued_rather_than_rejected(tmp_path, monkeypatch):
+    from botanical_shorts import pipeline
+
+    works = [{"title_id": "T1", "item_id": "I1", "page_ids": ["spread"]}]
+    plates = {"spread": _spread("left", w=1600, h=1400)}
+    _install_stub_pool(monkeypatch, works, plates, None)
+    # 1600x1400 is 1.14, inside the aspect gate, so the spread reaches vision
+    # exactly as the real ones did.
+    cfg = _cfg_for_stub(history_path=tmp_path / "h.json", output_dir=tmp_path / "b")
+
+    def fake_inspect(client, img, *, model, attempts=2):
+        return VisionVerdict(
+            9, True, True, True, True, "Agapanthus", [], illustration_side="left"
+        )
+
+    monkeypatch.setattr(pipeline, "inspect_plate", fake_inspect)
+
+    result = pipeline.select_and_build(
+        cfg, history=History(tmp_path / "h.json"), dry_run=True, vision_client=object()
+    )
+
+    assert result.accepted, "the illustrated half is publishable"
+    # The frame was built from one page, so the source is about half as wide.
+    assert result.summary["source_size"][0] < 1600 * 0.55
+
+
+def test_a_spread_with_no_single_illustrated_side_is_still_rejected(tmp_path, monkeypatch):
+    """Only a spread that can be cut into one good page is rescued."""
+    from botanical_shorts import pipeline
+
+    works = [{"title_id": "T1", "item_id": "I1", "page_ids": ["spread"]}]
+    _install_stub_pool(monkeypatch, works, {"spread": _spread("left", w=1600, h=1400)}, None)
+    cfg = _cfg_for_stub(history_path=tmp_path / "h.json")
+
+    monkeypatch.setattr(
+        pipeline,
+        "inspect_plate",
+        lambda c, i, *, model, attempts=2: VisionVerdict(
+            9, True, True, True, True, "two text pages", [], illustration_side="neither"
+        ),
+    )
+
+    result = pipeline.select_and_build(
+        cfg, history=History(tmp_path / "h.json"), dry_run=True, vision_client=object()
+    )
+    assert not result.accepted
+    assert any("facing pages" in r.reason for r in result.rejections)
+
+
+# -- ink: sparse is not the same as faint ------------------------------------
+#
+# Also from the audit pass: "There are some good images rejected for too little
+# ink." The whole-sheet measure cannot tell a small exact engraving on a large
+# sheet from a pencil study covering the same fraction of it.
+
+def _small_engraving_on_a_big_sheet():
+    """A dense specimen occupying a tenth of the plate -- a common plate layout."""
+    img = Image.new("RGB", (1200, 1600), (232, 222, 201))
+    for x in range(520, 700):
+        for y in range(700, 1000):
+            img.putpixel((x, y), (35, 30, 28))
+    return img
+
+
+def _faint_pencil_study():
+    """Marks everywhere, none of them dark: a clean scan that frames as empty."""
+    img = Image.new("RGB", (1200, 1600), (236, 228, 210))
+    for x in range(100, 1100, 7):
+        for y in range(100, 1500, 7):
+            img.putpixel((x, y), (205, 198, 186))
+    return img
+
+
+def test_a_small_dense_engraving_survives_the_ink_gate():
+    img = _small_engraving_on_a_big_sheet()
+    assert imaging.ink_coverage(img) < 0.05, "sparse on the sheet, which is the point"
+    imaging.check_ink_coverage(img, 0.015, 0.16)  # must not raise
+
+
+def test_a_faint_study_is_still_rejected():
+    img = _faint_pencil_study()
+    with pytest.raises(imaging.ImageError):
+        imaging.check_ink_coverage(img, 0.015, 0.16)
+
+
+def test_a_blank_leaf_is_rejected_by_the_floor():
+    blank = Image.new("RGB", (1200, 1600), (232, 222, 201))
+    with pytest.raises(imaging.ImageError, match="read as blank"):
+        imaging.check_ink_coverage(blank, 0.015, 0.16)
+
+
+def test_subject_coverage_ignores_a_speck_of_foxing_in_the_corner():
+    """A single stray mark must not stretch the measured region to the whole sheet."""
+    img = _small_engraving_on_a_big_sheet()
+    before = imaging.subject_ink_coverage(img)
+    for x in range(20, 34):
+        for y in range(20, 34):
+            img.putpixel((x, y), (60, 50, 45))
+    assert abs(imaging.subject_ink_coverage(img) - before) < 0.05

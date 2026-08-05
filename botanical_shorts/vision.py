@@ -77,6 +77,11 @@ and not a plate.
 together, with a gutter or fold running between them -- for example an \
 illustration on one side and a page of letterpress text on the other? Answer true \
 only for a genuine two-page capture. A single plate is false, however wide it is.
+- illustration_side (string): only meaningful when is_spread is true. Which half \
+of the capture carries the pictorial plate -- answer "left" or "right" when one \
+side holds the illustration and the other is letterpress text, a blank leaf or a \
+manuscript page. Answer "both" when both sides are pictorial, and "neither" when \
+neither is. Answer "" when is_spread is false.
 - subject_summary (string, max 8 words): the subject itself as a short noun \
 phrase. Name it directly -- do NOT begin with "Botanical illustration of", "An \
 illustration of", "A drawing of" or similar. If a name is legible on the plate, \
@@ -85,7 +90,8 @@ illustration of a lupine plant with purple flowers".
 - issues (array of short strings): specific defects you observed, empty if none.
 
 Respond with ONLY a JSON object with keys: scan_quality, caption_embedded, \
-species_name_visible, is_illustration, is_spread, subject_summary, issues."""
+species_name_visible, is_illustration, is_spread, illustration_side, \
+subject_summary, issues."""
 
 
 @dataclass
@@ -104,6 +110,11 @@ class VisionVerdict:
     is_spread: bool
     subject_summary: str
     issues: list[str]
+    # Which half of a two-page capture holds the plate: "left", "right",
+    # "both", "neither", or "" when this is not a spread. Defaulted, and
+    # placed after the required fields, so the positional constructors used
+    # throughout the tests keep working.
+    illustration_side: str = ""
     raw: str = ""
     error: str = ""
 
@@ -209,22 +220,34 @@ def inspect_plate(client, img: Image.Image, *, model: str, attempts: int = 2) ->
         species_name_visible=bool(data.get("species_name_visible")),
         is_illustration=bool(data.get("is_illustration")),
         is_spread=bool(data.get("is_spread")),
+        illustration_side=str(data.get("illustration_side") or "").strip().lower(),
         subject_summary=str(data.get("subject_summary") or "").strip(),
         issues=[str(i) for i in (data.get("issues") or [])],
         raw=raw,
     )
 
 
-def passes(verdict: VisionVerdict, *, min_quality: int, caption_mode: str) -> tuple[bool, str]:
+def passes(
+    verdict: VisionVerdict,
+    *,
+    min_quality: int,
+    caption_mode: str,
+    allow_spread: bool = False,
+) -> tuple[bool, str]:
     """Apply the configured gates to a verdict.
 
     Returns ``(accepted, reason)``.
+
+    ``allow_spread`` is set by a caller that has already cut the capture at the
+    fold and kept the illustrated half. The spread was the reason to reject the
+    frame, and once the frame is one page that reason is spent -- so this is a
+    statement about what the caller did, not a way to turn the gate off.
     """
     if verdict.error:
         return False, f"vision check errored: {verdict.error}"
     if not verdict.is_illustration:
         return False, "not a pictorial plate"
-    if verdict.is_spread:
+    if verdict.is_spread and not allow_spread:
         return False, "two facing pages captured together"
     if verdict.scan_quality < min_quality:
         issues = "; ".join(verdict.issues) or "no detail given"

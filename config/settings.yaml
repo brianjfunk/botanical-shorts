@@ -127,7 +127,15 @@ image:
   min_border_luminance: 60
   # A faint pencil study is a clean scan, so scan_quality rates it highly, and
   # it still frames as an empty page.
-  min_ink_coverage: 0.05
+  #
+  # Two measures, because one could not tell sparse from faint. The pool audit
+  # showed this gate taking 14% of everything -- correctly catching a sketchbook
+  # of pencil studies, but also rejecting small exact engravings that simply sat
+  # in the middle of a large sheet. So the whole-sheet number dropped to a bare
+  # floor against an empty leaf, and the judgement moved to how densely the
+  # worked part of the sheet is worked.
+  min_ink_coverage: 0.015
+  min_subject_ink_coverage: 0.16
 
 video:
   # Short by design: on a truly static frame the loop point is invisible, so a

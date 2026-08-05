@@ -95,6 +95,10 @@ class ImageConfig:
     # paper tone. Catches faint pencil studies, which score well on scan
     # quality -- the scan is fine -- and still frame as an empty page.
     min_ink_coverage: float = 0.05
+    # Coverage measured inside the inked region instead of across the sheet.
+    # Whole-sheet coverage cannot tell a small exact engraving from a faint
+    # sketch: both use little of the paper, and only one reads as empty.
+    min_subject_ink_coverage: float = 0.0
 
 
 @dataclass(frozen=True)
