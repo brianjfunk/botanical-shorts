@@ -48,17 +48,28 @@ source:
   # Cap per volume so one heavily-illustrated book cannot dominate the pool.
   max_pages_per_item: 6
   max_candidates: 400
-  # Works stay locked for this many published videos: 120 is about 5.5 months
-  # at five a week.
+  # Works are no longer locked after being featured. The cooldown deferred a
+  # whole work for 120 published videos, and the pool audit showed what that
+  # cost: the auditor, which ignores it, passed 30% of what it walked, while
+  # the batch selector -- pushed past every one of those works -- found two
+  # plates in ten attempts. It was not protecting quality, it was rationing
+  # access to the good part of the pool.
   #
-  # Bounded by distinct usable titles, which a survey put at 257 once
-  # titles_per_subject reached 400. Deliberately under half of that rather than
-  # the 130 a full six months would need, because the two failure directions
-  # are not symmetric: too short means an occasional near-repeat, which is
-  # survivable and which Brian judged acceptable months apart. Too long means
-  # the walk finds no unlocked work, the run publishes nothing, and the channel
-  # silently goes quiet.
-  title_cooldown: 120
+  # Nothing is discarded by turning it off. Individual pages and volumes are
+  # still retired permanently once used or rejected, so an exact repeat remains
+  # impossible; what returns is the rest of a good work.
+  #
+  # 0 disables. The risk this re-admits is the near-repeat: long serials
+  # reissued the same engraving across volumes, which is how two near-identical
+  # lupines reached the channel, and page/volume dedupe cannot see it because
+  # the ids genuinely differ. Two guards now cover that better than a blunt
+  # lock did -- one plate per work per batch below, and the human review pass,
+  # which would see both side by side.
+  title_cooldown: 0
+  # The useful half of the cooldown, scoped to a batch instead of to months:
+  # one plate per work per batch, so a week's uploads never carry two plates
+  # from the same serial. Expires with the batch and locks nothing out.
+  one_plate_per_title_per_batch: true
 
 license:
   # Allowlist, matched case-insensitively as substrings against BHL's

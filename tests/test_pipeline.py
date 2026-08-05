@@ -960,7 +960,12 @@ def test_shipped_config_carries_the_ported_gates():
     # an empty leaf; the real work is done by the subject measure.
     assert cfg.image.min_ink_coverage == 0.015
     assert cfg.image.min_subject_ink_coverage == 0.16
-    assert cfg.source.title_cooldown == 120
+    # The cooldown is off. It deferred a whole work for 120 published videos,
+    # and the pool audit showed what that cost: the auditor, which ignores it,
+    # passed 30% of what it walked while the batch selector found two plates in
+    # ten attempts. Its useful half survives as a per-batch rule.
+    assert cfg.source.title_cooldown == 0
+    assert cfg.source.one_plate_per_title_per_batch is True
 
 
 def test_black_framed_scan_is_rejected_before_framing():
@@ -1872,3 +1877,55 @@ def test_a_batch_caps_how_many_uninspected_plates_it_will_offer(tmp_path, monkey
     batch = pipeline.build_batch(cfg, count=8)
     assert len(batch) == 2
     assert all(e["inspected"] is False for e in batch)
+
+
+def test_a_batch_takes_at_most_one_plate_from_any_work(tmp_path, monkeypatch):
+    """The cooldown's useful half, scoped to a batch.
+
+    Long serials reissued the same engraving across volumes -- which is how two
+    near-identical lupines reached the channel -- and page/volume dedupe cannot
+    see it, because the ids genuinely differ. Within one batch that near-repeat
+    is at its most visible, so one work contributes one plate.
+    """
+    from botanical_shorts import pipeline
+
+    # One work with three separate volumes, exactly the serial shape.
+    class _Serial(_StubBHLClient):
+        def get_title_metadata(self, title_id):
+            return {
+                "TitleID": title_id, "FullTitle": "A long serial", "Year": "1850",
+                "Items": [{"ItemID": "I1"}, {"ItemID": "I2"}, {"ItemID": "I3"}],
+            }
+
+        def get_item_metadata(self, item_id):
+            return {
+                "ItemID": item_id, "RightsStatus": "Public domain",
+                "Pages": [{"PageID": f"{item_id}p", "PageTypes": ["Illustration"]}],
+            }
+
+    monkeypatch.setenv("BHL_API_KEY", "test-key")
+    monkeypatch.setattr(
+        bhl, "BHLClient",
+        lambda key, session=None: _Serial([{"title_id": "T1", "item_id": "I1", "page_ids": []}]),
+    )
+    monkeypatch.setattr(
+        bhl, "download_page_image", lambda c, session=None, timeout=90: make_plate(900, 1200)
+    )
+    monkeypatch.setattr(pipeline.imaging, "load_image", lambda data: data)
+
+    cfg = _no_vision(
+        _cfg_for_stub(history_path=tmp_path / "h.json", output_dir=tmp_path / "b")
+    )
+    import dataclasses
+    cfg = dataclasses.replace(
+        cfg, source=dataclasses.replace(cfg.source, max_items_per_title=3)
+    )
+
+    batch = pipeline.build_batch(cfg, count=3)
+    assert len(batch) == 1, "three volumes of one serial must yield one plate"
+
+    # And with the rule off, the same pool gives the near-repeats back.
+    loose = dataclasses.replace(
+        cfg, source=dataclasses.replace(cfg.source, one_plate_per_title_per_batch=False)
+    )
+    assert len(pipeline.build_batch(loose, count=3)) == 3

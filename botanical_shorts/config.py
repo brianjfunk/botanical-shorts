@@ -43,6 +43,10 @@ class SourceConfig:
     # together in the feed. Bounded by the number of distinct usable titles --
     # a cooldown approaching that count leaves the walk nothing to publish.
     title_cooldown: int = 120
+    # Take at most one plate from any single work within one batch. Replaces
+    # the useful half of the cooldown: near-identical plates from one serial
+    # are most jarring when they land in the same week's uploads.
+    one_plate_per_title_per_batch: bool = True
 
 
 @dataclass(frozen=True)

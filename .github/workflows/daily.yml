@@ -5,15 +5,17 @@ name: Daily plate
 # merged to the default branch the cron will never fire and the Run workflow
 # button will not appear.
 
+# The weekday cron is DELIBERATELY GONE. It published one plate straight to the
+# channel with nobody looking, which is the one path that can put an unreviewed
+# frame in front of viewers now that build/publish batches exist. Selection is
+# no longer a thing that happens on a timer: a batch is built, looked at once,
+# and only then published.
+#
+# Kept as a dispatch-only workflow because it is still the way to produce a
+# single plate on demand -- for a smoke test after a gate change, or to check a
+# credential end to end. Restoring the schedule means restoring unreviewed
+# uploads, so do it only if the review step is deliberately being dropped.
 on:
-  schedule:
-    # Weekdays at 13:10 UTC -- five a week. Off the hour, since scheduled runs
-    # bunch up on the hour; GitHub's scheduler is best-effort either way and
-    # delays of an hour or more are normal, so treat the time as approximate.
-    #
-    # Five rather than seven because the pool of licence-passed, gate-passing
-    # plates is finite and every published plate is retired from it for good.
-    - cron: "10 13 * * 1-5"
   workflow_dispatch:
     inputs:
       dry_run:

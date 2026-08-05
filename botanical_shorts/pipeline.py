@@ -89,6 +89,7 @@ def select_and_build(
     dry_run: bool = False,
     blocked_pages: set[str] | None = None,
     allow_uninspected: bool = False,
+    skip_titles: set[str] | None = None,
 ) -> RunResult:
     """Find one publishable plate and produce the framed still and video.
 
@@ -132,7 +133,11 @@ def select_and_build(
         # candidate budget, and the window rotates as the channel grows.
         skip_pages=set(history.page_ids) | blocked,
         skip_items=history.item_ids,
-        skip_titles=history.recent_title_ids(cfg.source.title_cooldown),
+        # The cooldown is off by default now; what remains here is whatever the
+        # caller wants excluded for its own reasons, plus the cooldown when a
+        # deployment still sets one.
+        skip_titles=set(history.recent_title_ids(cfg.source.title_cooldown))
+        | set(skip_titles or ()),
         title_offset=len(history.entries),
     )
 
@@ -542,6 +547,13 @@ def build_batch(cfg: Config, *, count: int) -> list[dict[str, Any]]:
     # Shared across the whole batch: every walk starts from the same subject
     # list, so without this each selection re-downloads the same duds.
     blocked: set[str] = set()
+    # Works already drawn from in this batch. Not a cooldown -- it expires with
+    # the batch and locks nothing out of future ones. It exists because the
+    # near-repeat the cooldown used to guard against is at its most visible
+    # inside a single week's uploads: a long serial reissued the same engraving
+    # across volumes, so two plates can be near-identical while differing in
+    # both page and volume id.
+    drawn_titles: set[str] = set()
 
     for n in range(count):
         log.info("--- selecting %d of %d ---", n + 1, count)
@@ -557,6 +569,7 @@ def build_batch(cfg: Config, *, count: int) -> list[dict[str, Any]]:
             dry_run=True,
             blocked_pages=blocked,
             allow_uninspected=uninspected < cfg.vision.max_uninspected_per_batch,
+            skip_titles=drawn_titles if cfg.source.one_plate_per_title_per_batch else None,
         )
         if not result.accepted:
             # Report *why*, the way _run_once does. A batch that stops short is
@@ -570,6 +583,7 @@ def build_batch(cfg: Config, *, count: int) -> list[dict[str, Any]]:
         entry = dict(result.summary)
         entry["image_path"] = str(result.image_path)
         batch.append(entry)
+        drawn_titles.add(str(entry["title_id"]))
         # In-memory only: this plate is a candidate, not a publication.
         history.record(
             {
