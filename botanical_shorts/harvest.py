@@ -286,8 +286,19 @@ def publish_order(entries: list[dict[str, Any]], *, seed: int | None = None) -> 
     return ordered
 
 
-def publish_from_queue(cfg: Config, entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def publish_from_queue(
+    cfg: Config,
+    entries: list[dict[str, Any]],
+    on_published=None,
+) -> list[dict[str, Any]]:
     """Upload approved plates. No judgement happens here -- that already did.
+
+    ``on_published`` is called after each upload is safely recorded, and is the
+    only reliable way for a caller to learn what went live. Reading the return
+    value is not: this run stopped at YouTube's daily cap after nine uploads,
+    the exception propagated, and the caller's ``finally`` block saw an empty
+    list because the assignment had never happened. Nine live videos were left
+    marked approved, one rerun away from being published twice.
 
     The frame is re-derived from the page rather than carried through from the
     harvest: the same page and the same stored verdict always yield the same
@@ -341,17 +352,30 @@ def publish_from_queue(cfg: Config, entries: list[dict[str, Any]]) -> list[dict[
             crf=cfg.video.crf,
         )
 
-        upload = youtube.upload_video(
-            video_path,
-            title=entry["title"],
-            description=entry["description"],
-            tags=cfg.upload.tags,
-            category_id=cfg.upload.category_id,
-            privacy_status=cfg.upload.privacy_status,
-            publish_at=youtube.scheduled_publish_time(cfg.upload.publish_delay_hours),
-            made_for_kids=cfg.upload.made_for_kids,
-            credentials=creds,
-        )
+        try:
+            upload = youtube.upload_video(
+                video_path,
+                title=entry["title"],
+                description=entry["description"],
+                tags=cfg.upload.tags,
+                category_id=cfg.upload.category_id,
+                privacy_status=cfg.upload.privacy_status,
+                publish_at=youtube.scheduled_publish_time(cfg.upload.publish_delay_hours),
+                made_for_kids=cfg.upload.made_for_kids,
+                credentials=creds,
+            )
+        except youtube.UploadError as exc:
+            # The per-channel daily cap is a normal end to a run, not a fault:
+            # the remaining plates stay approved and go out tomorrow. Treating
+            # it as a crash is what let nine live videos go unrecorded.
+            if "uploadLimitExceeded" in str(exc) or "exceeded the number of videos" in str(exc):
+                log.warning(
+                    "YouTube's daily upload cap reached after %d uploads; "
+                    "the rest of the queue keeps its place",
+                    len(published),
+                )
+                break
+            raise
         history.record(
             {
                 "page_id": cand.page_id,
@@ -365,7 +389,10 @@ def publish_from_queue(cfg: Config, entries: list[dict[str, Any]]) -> list[dict[
         # Saved after every upload: a run that dies partway must not leave live
         # videos unrecorded, or the next run republishes them.
         history.save()
-        published.append({**entry, "video_id": upload.video_id, "url": upload.url})
+        record = {**entry, "video_id": upload.video_id, "url": upload.url}
+        published.append(record)
+        if on_published is not None:
+            on_published(record)
         log.info("uploaded %s (%s)", upload.video_id, entry["title"][:60])
 
     return published

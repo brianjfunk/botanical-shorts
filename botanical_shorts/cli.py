@@ -706,22 +706,35 @@ def cmd_publish_next(args: argparse.Namespace) -> int:
     from . import notify
     from .queue import Queue
 
+    from .history import History
+
     cfg = load_config(args.config)
     q = Queue(_queue_path(cfg))
+
+    # History is the authority on what is already live. A previous run that
+    # died partway can leave the queue claiming plates are still waiting when
+    # they are on the channel.
+    if q.reconcile(History(cfg.history_path)):
+        q.save()
+
     due = q.next_approved(args.count)
     if not due:
         print("the approved queue is empty; run a harvest and review it", file=sys.stderr)
         return 1
 
-    published = []
+    published: list = []
+
+    def record(entry):
+        # Written the moment each upload is safe, not at the end. Reading the
+        # return value cannot work: when the daily cap ended a run after nine
+        # uploads the exception propagated and the caller never saw them.
+        q.mark_published(entry["page_id"], entry["video_id"])
+        q.save()
+        published.append(entry)
+
     try:
-        published = harvest_mod.publish_from_queue(cfg, due)
+        harvest_mod.publish_from_queue(cfg, due, on_published=record)
     finally:
-        # Recorded even if the upload run dies partway -- YouTube's daily cap
-        # ends a run mid-batch, and anything already live must not be offered
-        # again.
-        for entry in published:
-            q.mark_published(entry["page_id"], entry["video_id"])
         q.save()
 
     for entry in published:

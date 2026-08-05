@@ -2180,3 +2180,110 @@ def test_harvest_drops_the_second_copy_of_one_illustration(tmp_path, monkeypatch
     assert "first" in kept and "other" in kept
     assert "reissue" not in kept
     assert any(r.stage == "duplicate" for r in result.rejections)
+
+
+# -- a run that stops partway must still record what went live ---------------
+#
+# YouTube's daily cap ended a publish run after nine uploads. The exception
+# propagated, the caller's `finally` block read a variable that had never been
+# assigned -- a function's return value does not exist when it raises -- and
+# nine live videos stayed marked approved, one rerun away from being published
+# twice.
+
+def test_the_queue_learns_about_uploads_as_they_happen(tmp_path):
+    from botanical_shorts.queue import Queue
+
+    q = Queue(tmp_path / "q.json")
+    q.add([
+        {"page_id": "a", "title_id": "T", "status": "approved"},
+        {"page_id": "b", "title_id": "T", "status": "approved"},
+    ])
+    for e in q.entries:
+        e["status"] = "approved"
+
+    # What the CLI does per upload, before the next one can fail.
+    q.mark_published("a", "vid-a")
+    q.save()
+
+    reloaded = Queue(tmp_path / "q.json")
+    assert reloaded.counts() == {"published": 1, "approved": 1}
+
+
+def test_reconcile_believes_history_over_the_queue(tmp_path):
+    """History is written upload by upload; the queue is only a plan."""
+    from botanical_shorts.queue import Queue
+
+    h = History(tmp_path / "h.json")
+    h.record({"page_id": "a", "item_id": "1", "title_id": "T", "video_id": "vid-a"})
+    h.save()
+
+    q = Queue(tmp_path / "q.json")
+    q.add([{"page_id": "a", "title_id": "T"}, {"page_id": "b", "title_id": "T"}])
+    for e in q.entries:
+        e["status"] = "approved"
+
+    assert q.reconcile(History(tmp_path / "h.json")) == 1
+    assert q.counts() == {"published": 1, "approved": 1}
+    assert q.next_approved(5)[0]["page_id"] == "b", "a published plate is not due again"
+
+
+def test_reconcile_is_safe_to_run_when_nothing_has_changed(tmp_path):
+    from botanical_shorts.queue import Queue
+
+    h = History(tmp_path / "h.json")
+    h.save()
+    q = Queue(tmp_path / "q.json")
+    q.add([{"page_id": "a", "title_id": "T"}])
+    assert q.reconcile(History(tmp_path / "h.json")) == 0
+
+
+def test_the_daily_cap_ends_a_run_without_losing_what_uploaded(tmp_path, monkeypatch):
+    from botanical_shorts import harvest as h
+    from botanical_shorts import youtube
+
+    cfg = _cfg_for_stub(history_path=tmp_path / "h.json", output_dir=tmp_path / "b")
+    entries = [
+        {
+            "page_id": str(i),
+            "item_id": str(i),
+            "title_id": "T",
+            "title": f"Plate {i}",
+            "description": "",
+            "candidate": {
+                "page_id": str(i), "item_id": str(i), "title_id": "T",
+                "title": "A Work", "year": "1850", "publisher": "", "authors": [],
+                "page_types": ["Illustration"], "rights": "Public domain",
+                "license_name": "", "license_url": "", "source": "",
+            },
+        }
+        for i in range(4)
+    ]
+
+    for name in ("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"):
+        monkeypatch.setenv(name, "test")
+    monkeypatch.setattr(h.bhl, "download_page_image", lambda c, session=None, timeout=90: b"x")
+    monkeypatch.setattr(h.imaging, "load_image", lambda d: make_plate(900, 1200))
+    monkeypatch.setattr(youtube, "build_credentials", lambda *a, **k: object())
+
+    import botanical_shorts.video as video_mod
+    monkeypatch.setattr(video_mod, "render_still", lambda *a, **k: None)
+
+    calls = {"n": 0}
+
+    def capped(*a, **kw):
+        calls["n"] += 1
+        if calls["n"] > 2:
+            raise youtube.UploadError(
+                'YouTube rejected the upload: "uploadLimitExceeded"'
+            )
+        return youtube.UploadResult(
+            video_id=f"vid{calls['n']}", url="u", studio_url="s", publish_at=""
+        )
+
+    monkeypatch.setattr(youtube, "upload_video", capped)
+
+    seen = []
+    published = h.publish_from_queue(cfg, entries, on_published=seen.append)
+
+    assert len(published) == 2, "the cap stops the run rather than crashing it"
+    assert [e["video_id"] for e in seen] == ["vid1", "vid2"]

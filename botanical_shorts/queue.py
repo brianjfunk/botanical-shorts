@@ -100,6 +100,29 @@ class Queue:
         self.entries.sort(key=lambda e: (e.get("status") != APPROVED, e.get("publish_rank", 1 << 30)))
         return len(order), len(rejected_indices)
 
+    def reconcile(self, history) -> int:
+        """Mark as published anything history says is already live.
+
+        History is written upload by upload and is the authority on what
+        exists on YouTube; the queue is a plan. When a run dies partway -- the
+        daily cap is the ordinary way -- the two disagree, and believing the
+        queue would republish videos that are already up. Safe to run at any
+        time, and cheap.
+        """
+        live = {
+            str(e["page_id"]): str(e.get("video_id") or "")
+            for e in history.entries
+            if e.get("page_id") and e.get("video_id")
+        }
+        fixed = 0
+        for entry in self.entries:
+            page_id = str(entry.get("page_id"))
+            if page_id in live and entry.get("status") != PUBLISHED:
+                entry["status"] = PUBLISHED
+                entry["video_id"] = live[page_id]
+                fixed += 1
+        return fixed
+
     def mark_published(self, page_id: str, video_id: str) -> None:
         for entry in self.entries:
             if str(entry.get("page_id")) == str(page_id):
