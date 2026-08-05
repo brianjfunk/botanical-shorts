@@ -362,7 +362,20 @@ def build_batch(cfg: Config, *, count: int) -> list[dict[str, Any]]:
         log.info("--- selecting %d of %d ---", n + 1, count)
         result = select_and_build(cfg, history=history, dry_run=True)
         if not result.accepted:
+            # Report *why*, the way _run_once does. A batch that stops at zero
+            # is indistinguishable from an empty pool without this, and the
+            # rejection list is the only record of which gate did it.
             log.warning("no further plate found; batch stops at %d", len(batch))
+            by_stage: dict[str, int] = {}
+            for rej in result.rejections:
+                by_stage[rej.stage] = by_stage.get(rej.stage, 0) + 1
+            log.warning(
+                "%d candidates rejected: %s",
+                len(result.rejections),
+                ", ".join(f"{k}={v}" for k, v in sorted(by_stage.items())) or "none",
+            )
+            for rej in result.rejections[:25]:
+                log.warning("  page %s at %s: %s", rej.page_id, rej.stage, rej.reason)
             break
 
         entry = dict(result.summary)
