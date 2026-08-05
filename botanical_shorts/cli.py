@@ -389,10 +389,12 @@ def cmd_pool_survey(args: argparse.Namespace) -> int:
     client = bhl.BHLClient(require_env("BHL_API_KEY"), session=session)
 
     titles_per_subject = args.titles or cfg.source.titles_per_subject
+    # Measure a candidate category without committing it to config first.
+    subjects = args.subjects or cfg.source.subjects
 
     print("== Titles per subject (title-level publications, Parts dropped)")
     all_title_ids: set[str] = set()
-    for subject in cfg.source.subjects:
+    for subject in subjects:
         try:
             titles = client.subject_titles(subject)
         except Exception as exc:
@@ -408,7 +410,7 @@ def cmd_pool_survey(args: argparse.Namespace) -> int:
     print("\n== Walking candidates")
     candidates = bhl.iter_candidates(
         client,
-        subjects=cfg.source.subjects,
+        subjects=subjects,
         page_types=cfg.source.page_types,
         year_min=cfg.source.year_min,
         year_max=cfg.source.year_max,
@@ -446,9 +448,21 @@ def cmd_pool_survey(args: argparse.Namespace) -> int:
     passed = 0
     reasons: dict[str, int] = {}
     titles_passing: set[str] = set()
+    # Aspect is recorded for every scan that downloads, including ones that
+    # fail other gates. max_source_aspect was chosen against botanical plates,
+    # which are overwhelmingly portrait; fish, reptile and Haeckel plates are
+    # not, so the threshold needs re-deciding per category against real
+    # numbers rather than carried over.
+    aspects: list[float] = []
     for cand in sample:
         try:
             img = imaging.load_image(bhl.download_page_image(cand, session=session))
+        except Exception as exc:
+            key = str(exc).split(":")[0][:48]
+            reasons[key] = reasons.get(key, 0) + 1
+            continue
+        aspects.append(img.width / img.height)
+        try:
             imaging.check_source_resolution(
                 img, cfg.image.min_source_width, cfg.image.min_source_height
             )
@@ -467,6 +481,22 @@ def cmd_pool_survey(args: argparse.Namespace) -> int:
     print(f"   {passed}/{len(sample)} passed ({rate:.0%})")
     for reason, n in sorted(reasons.items(), key=lambda kv: -kv[1]):
         print(f"   {n:4}  {reason}")
+
+    if aspects:
+        ordered = sorted(aspects)
+        def pct(p: float) -> float:
+            return ordered[min(len(ordered) - 1, int(len(ordered) * p))]
+
+        print(f"\n== Aspect (width/height) over {len(ordered)} scans")
+        print(f"   portrait (<=1.0) : {sum(1 for a in ordered if a <= 1.0) / len(ordered):.0%}")
+        print(f"   median           : {pct(0.5):.2f}")
+        print(f"   75th / 90th      : {pct(0.75):.2f} / {pct(0.90):.2f}")
+        print(f"   widest           : {ordered[-1]:.2f}")
+        print("   share kept at each candidate max_source_aspect:")
+        for threshold in (1.25, 1.4, 1.6, 2.0):
+            kept = sum(1 for a in ordered if a <= threshold) / len(ordered)
+            mark = "  <- current" if abs(threshold - cfg.image.max_source_aspect) < 1e-9 else ""
+            print(f"     {threshold:>4}  {kept:>4.0%}{mark}")
 
     print("\n== Implied pool")
     est_plates = int(len(licensed) * rate)
@@ -640,6 +670,9 @@ def main(argv: list[str] | None = None) -> int:
     p_pool.add_argument("--limit", type=int, default=1500, help="candidates to walk")
     p_pool.add_argument("--sample", type=int, default=60, help="plates to fetch for image gates")
     p_pool.add_argument("--titles", type=int, help="override source.titles_per_subject")
+    p_pool.add_argument(
+        "--subjects", nargs="+", help="measure these subjects instead of the configured ones"
+    )
     p_pool.set_defaults(func=cmd_pool_survey)
 
     p_page = sub.add_parser("page-info", help="resolve page ids to their volume and work")

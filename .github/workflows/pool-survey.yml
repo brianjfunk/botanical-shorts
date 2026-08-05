@@ -25,6 +25,10 @@ on:
         description: "Override source.titles_per_subject (blank = use config)"
         type: string
         default: ""
+      subjects:
+        description: "Optional: measure these subjects instead of the configured ones (space-separated, quote multi-word)"
+        type: string
+        default: ""
       find_subjects:
         description: "Optional: space-separated terms to search for real BHL subject headings"
         type: string
@@ -68,6 +72,9 @@ jobs:
           ARGS="--limit ${{ inputs.limit || '1500' }} --sample ${{ inputs.sample || '60' }}"
           if [ -n "${{ inputs.titles }}" ]; then
             ARGS="$ARGS --titles ${{ inputs.titles }}"
+          fi
+          if [ -n "${{ inputs.subjects }}" ]; then
+            ARGS="$ARGS --subjects ${{ inputs.subjects }}"
           fi
           python -m botanical_shorts.cli pool-survey $ARGS | tee survey.txt
 
