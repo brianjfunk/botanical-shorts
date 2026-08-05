@@ -45,14 +45,14 @@
       "source": "Internet Archive",
       "subject": "Botanical illustration"
     },
-    "scan_quality": 8,
+    "scan_quality": 7,
     "caption_embedded": true,
     "species_name_visible": true,
     "is_spread": false,
     "subject_summary": "Dichorisandra ovata",
     "vision_issues": [
-      "faint pencil sketch visible beside plate",
-      "slight paper toning"
+      "visible pencil sketch underlay/bleed-through on left side",
+      "slight page skew"
     ],
     "caption_mode": "log_only",
     "image_path": "/home/runner/work/botanical-shorts/botanical-shorts/build/20260805-54760696.png"
@@ -61,8 +61,8 @@
     "page_id": "53615638",
     "item_id": "227613",
     "title_id": "132203",
-    "title": "Hen & Chicken Daisy (1760)",
-    "description": "Hen & Chicken Daisy.\n\nSource\nThe florist : containing sixty plates of the most beautiful flowers regularly disposed in their succession of blowing. To which is added an accurate description of their colours with instructions for drawing and painting according to nature : being a new work intended for the use & amusement of gentlemen and ladies delighting in that art. Sayer, Robert. 1760. Printed for Robt. Sayer ..., T. Bowles ..., John Bowles & Son. Biodiversity Heritage Library.\nhttps://www.biodiversitylibrary.org/page/53615638\nDigitised by Internet Archive.\n\nRights: Public domain. The BHL considers that this work is no longer under copyright protection.\n\nPresented as scanned, with no added text or digital retouching.",
+    "title": "Hen and Chicken Daisy (1760)",
+    "description": "Hen and Chicken Daisy.\n\nSource\nThe florist : containing sixty plates of the most beautiful flowers regularly disposed in their succession of blowing. To which is added an accurate description of their colours with instructions for drawing and painting according to nature : being a new work intended for the use & amusement of gentlemen and ladies delighting in that art. Sayer, Robert. 1760. Printed for Robt. Sayer ..., T. Bowles ..., John Bowles & Son. Biodiversity Heritage Library.\nhttps://www.biodiversitylibrary.org/page/53615638\nDigitised by Internet Archive.\n\nRights: Public domain. The BHL considers that this work is no longer under copyright protection.\n\nPresented as scanned, with no added text or digital retouching.",
     "citation": "The florist : containing sixty plates of the most beautiful flowers regularly disposed in their succession of blowing. To which is added an accurate description of their colours with instructions for drawing and painting according to nature : being a new work intended for the use & amusement of gentlemen and ladies delighting in that art. Sayer, Robert. 1760. Printed for Robt. Sayer ..., T. Bowles ..., John Bowles & Son. Biodiversity Heritage Library.",
     "page_url": "https://www.biodiversitylibrary.org/page/53615638",
     "thumb_url": "https://www.biodiversitylibrary.org/pagethumb/53615638",
@@ -109,10 +109,10 @@
     "caption_embedded": true,
     "species_name_visible": true,
     "is_spread": false,
-    "subject_summary": "Hen & Chicken Daisy",
+    "subject_summary": "Hen and Chicken Daisy",
     "vision_issues": [
-      "light staining/foxing on right side",
-      "faint vertical crease near center"
+      "faint staining upper right area",
+      "light foxing marks"
     ],
     "caption_mode": "log_only",
     "image_path": "/home/runner/work/botanical-shorts/botanical-shorts/build/20260805-53615638.png"
