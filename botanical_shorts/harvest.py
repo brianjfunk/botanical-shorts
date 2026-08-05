@@ -79,11 +79,19 @@ def harvest(
     session: requests.Session | None = None,
     vision_client: Any = None,
     known_pages: Iterable[str] = (),
+    subjects: Iterable[str] | None = None,
+    category: str = "",
 ) -> HarvestResult:
     """Walk ``limit`` candidates, judging every one of them.
 
     ``known_pages`` are pages already in the queue or already published --
     filtered inside the walk so they never consume the candidate budget.
+
+    ``subjects`` narrows the walk to some of the configured headings, and
+    ``category`` is stamped on everything kept. Harvesting a category at a time
+    is what stops Ornithology's 6,730 titles from crowding out Mycology's 640:
+    a single walk over the flattened heading list would spend its whole budget
+    on whichever category came first.
     """
     session = session or requests.Session()
     client = bhl.BHLClient(require_env("BHL_API_KEY"), session=session)
@@ -100,7 +108,7 @@ def harvest(
 
     candidates = bhl.iter_candidates(
         client,
-        subjects=cfg.source.subjects,
+        subjects=list(subjects) if subjects is not None else cfg.source.subjects,
         page_types=cfg.source.page_types,
         year_min=cfg.source.year_min,
         year_max=cfg.source.year_max,
@@ -197,6 +205,11 @@ def harvest(
             "citation": candidate.citation(),
             "page_url": candidate.page_url,
             "candidate": _candidate_fields(candidate),
+            # The heading the walk found it under, and the category that
+            # heading belongs to. The category is what a viewer sees and what
+            # names a playlist; the heading is a cataloguing artefact.
+            "subject": candidate.subject,
+            "category": category or cfg.source.category_of(candidate.subject),
             "status": "pending",
         }
         if seen:
@@ -241,6 +254,90 @@ def harvest(
     return result
 
 
+def harvest_all(
+    cfg: Config,
+    *,
+    per_category: int,
+    known_pages: Iterable[str] = (),
+) -> HarvestResult:
+    """Harvest every configured category, each with its own candidate budget.
+
+    Sequential rather than combined, because the categories are wildly uneven:
+    Ornithology carries 6,730 titles against Mycology's 640, and one walk over
+    the flattened heading list would spend everything on whichever came first
+    and report the rest as empty.
+
+    The vision budget is shared and drains as the sweep runs, so a later
+    category can find it spent. That is why the budget is generous and the
+    per-category limit modest: the plates a run never reached are still in the
+    pool, and the next refill starts where this one gave up.
+    """
+    import requests as _requests
+
+    combined = HarvestResult()
+    session = _requests.Session()
+    vision_client = None
+    if cfg.vision.enabled and cfg.vision.max_vision_calls > 0:
+        from .pipeline import _anthropic_client
+
+        vision_client = _anthropic_client()
+
+    seen = set(str(p) for p in known_pages)
+
+    for name, headings in cfg.source.categories.items():
+        remaining = cfg.vision.max_vision_calls - combined.vision_calls
+        if cfg.vision.enabled and remaining <= 0:
+            log.warning("vision budget spent; %s and later categories skipped", name)
+            break
+
+        log.info("=== harvesting %s (%d headings) ===", name, len(headings))
+        import dataclasses as _dc
+
+        scoped = _dc.replace(
+            cfg, vision=_dc.replace(cfg.vision, max_vision_calls=max(0, remaining))
+        )
+        result = harvest(
+            scoped,
+            limit=per_category,
+            session=session,
+            vision_client=vision_client,
+            known_pages=seen,
+            subjects=headings,
+            category=name,
+        )
+        combined.entries.extend(result.entries)
+        combined.images.extend(result.images)
+        combined.rejections.extend(result.rejections)
+        combined.vision_calls += result.vision_calls
+        seen.update(str(e["page_id"]) for e in result.entries)
+        log.info("%s: kept %d, %d vision calls", name, len(result.entries), result.vision_calls)
+
+    return combined
+
+
+def _spread(piles: list[list[dict[str, Any]]], key) -> list[dict[str, Any]]:
+    """Deal from the largest pile that is not the one just used.
+
+    Round-robin instead looks fine until the small piles run out and the
+    dominant pile's remainder lands in one block at the end. Taking the largest
+    first keeps the piles even, so the heaviest is spread as thinly as its
+    share allows. When only one pile is left it must repeat, which is the
+    pool-size effect rather than a fault.
+    """
+    piles = [p for p in piles if p]
+    out: list[dict[str, Any]] = []
+    last = None
+    while piles:
+        piles.sort(key=len, reverse=True)
+        pick = next((p for p in piles if key(p[0]) != last), piles[0])
+        entry = pick.pop(0)
+        last = key(entry)
+        out.append(entry)
+        if not pick:
+            piles.remove(pick)
+    return out
+
+
 def publish_order(entries: list[dict[str, Any]], *, seed: int | None = None) -> list[dict[str, Any]]:
     """Order approved plates so consecutive uploads are rarely from one work.
 
@@ -255,35 +352,36 @@ def publish_order(entries: list[dict[str, Any]], *, seed: int | None = None) -> 
     Shuffling first means two runs over the same queue give different orders.
     """
     rng = random.Random(seed)
-    by_work: dict[str, list[dict[str, Any]]] = {}
+
+    def work_of(e):
+        return str(e.get("title_id") or "")
+
+    def cat_of(e):
+        return str(e.get("category") or "")
+
+    # Two passes over the same dealing rule. Within a category, space the works
+    # apart; then across categories, space the categories apart while keeping
+    # each category's internal order. Doing it in one pass on a combined key
+    # would let five birds run together as long as they came from five
+    # different books, which is the thing that would actually read as
+    # repetitive.
+    by_category: dict[str, list[dict[str, Any]]] = {}
     for entry in entries:
-        by_work.setdefault(str(entry.get("title_id") or ""), []).append(entry)
+        by_category.setdefault(cat_of(entry), []).append(entry)
 
-    piles = list(by_work.values())
-    for pile in piles:
-        rng.shuffle(pile)
-    rng.shuffle(piles)
+    category_piles: list[list[dict[str, Any]]] = []
+    for items in by_category.values():
+        by_work: dict[str, list[dict[str, Any]]] = {}
+        for entry in items:
+            by_work.setdefault(work_of(entry), []).append(entry)
+        work_piles = list(by_work.values())
+        for pile in work_piles:
+            rng.shuffle(pile)
+        rng.shuffle(work_piles)
+        category_piles.append(_spread(work_piles, work_of))
 
-    ordered: list[dict[str, Any]] = []
-    last: str | None = None
-    while piles:
-        # Always take from the largest pile that is not the one just used.
-        # Dealing round-robin instead looks fine until the small piles run out
-        # and the dominant work's remainder lands in one block at the end --
-        # with six plates from one work in a queue of twelve, that produced a
-        # run of three. Taking the largest first keeps the piles even, so the
-        # heaviest work is spread as thinly as its share allows.
-        piles.sort(key=len, reverse=True)
-        pick = next(
-            (p for p in piles if str(p[0].get("title_id") or "") != last),
-            piles[0],  # only one work left: it must repeat, and that is fine
-        )
-        entry = pick.pop()
-        last = str(entry.get("title_id") or "")
-        ordered.append(entry)
-        if not pick:
-            piles.remove(pick)
-    return ordered
+    rng.shuffle(category_piles)
+    return _spread(category_piles, cat_of)
 
 
 def publish_from_queue(

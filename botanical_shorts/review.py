@@ -54,6 +54,11 @@ def render(entries: Sequence[dict[str, Any]], images: Sequence[Image.Image]) -> 
     for i, (entry, img) in enumerate(zip(entries, images)):
         title = html.escape(str(entry.get("title", "")))
         citation = html.escape(str(entry.get("citation", ""))[:160])
+        # Shown because a mixed batch is otherwise hard to read: seven
+        # categories arrive interleaved, and knowing a plate is Marine rather
+        # than Botanical changes whether it looks right.
+        category = html.escape(str(entry.get("category", "")))
+        chip = f'<span class="cat">{category}</span>' if category else ""
         # A plate the model never saw, because the call budget ran out mid-walk.
         # It cleared every mechanical gate, so it is not junk -- but it has had
         # no judgement about whether it is a picture at all, which is exactly
@@ -67,7 +72,8 @@ def render(entries: Sequence[dict[str, Any]], images: Sequence[Image.Image]) -> 
             f'<figure class="card" data-i="{i}" onclick="t({i})">'
             f'<img src="{_thumb_data_uri(img)}" alt="{title}" loading="lazy">'
             f'{flag}<span class="mark">✕</span>'
-            f"<figcaption><b>{i + 1}.</b> {title}<small>{citation}</small></figcaption>"
+            f"<figcaption><b>{i + 1}.</b> {title}{chip}"
+            f"<small>{citation}</small></figcaption>"
             f"</figure>"
         )
 
@@ -96,6 +102,10 @@ def render(entries: Sequence[dict[str, Any]], images: Sequence[Image.Image]) -> 
                  background: #b0303099; font-weight: 700; }}
   .card.out {{ opacity: .45; }}
   .card.out .mark {{ display: flex; }}
+  .card figcaption .cat {{ display: inline-block; margin-left: .3rem;
+                          padding: .05rem .3rem; border-radius: 3px;
+                          background: #8a7f6822; color: inherit; opacity: .8;
+                          font-size: .9em; white-space: nowrap; }}
   .card .flag {{ position: absolute; top: .35rem; left: .35rem; z-index: 1;
                  background: #8a5a1f; color: #fff; font-size: .6rem;
                  letter-spacing: .04em; text-transform: uppercase;

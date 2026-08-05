@@ -24,9 +24,17 @@ class ConfigError(RuntimeError):
 
 @dataclass(frozen=True)
 class SourceConfig:
-    # Subject tags queried against BHL. Botanical-only for v1; adding
-    # zoological/entomological subjects here is the one-line widening.
-    subjects: list[str]
+    # Category name -> the BHL subject headings that fill it. Two levels
+    # because they are genuinely different things: a category is what a viewer
+    # sees (and what a playlist is named for), while a heading is a
+    # cataloguing artefact. "Marine" is one category assembled from seven
+    # headings, and "Birds" and "Ornithology" are two headings for one.
+    #
+    # Every heading here has been confirmed to carry titles. A heading that
+    # does not exist answers HTTP 200 with an empty list, exactly like a real
+    # but thin one, which is how two dead subjects sat in config for weeks --
+    # check any new one with the Subjects workflow first.
+    categories: dict[str, list[str]]
     # Only these page types are considered plates worth publishing.
     page_types: list[str]
     # Publication year window. Classic plate-embedded lettering era.
@@ -47,6 +55,28 @@ class SourceConfig:
     # useful half of the cooldown: near-identical plates from one serial are
     # most jarring when they land in the same week's uploads. 0 = unlimited.
     max_plates_per_title_per_batch: int = 3
+
+    @property
+    def subjects(self) -> list[str]:
+        """Every heading, flattened, in category order and de-duplicated.
+
+        Kept so that everything reading a flat subject list -- the auditor, the
+        pool survey, the channel art -- goes on working without knowing about
+        categories.
+        """
+        out: list[str] = []
+        for headings in self.categories.values():
+            for heading in headings:
+                if heading not in out:
+                    out.append(heading)
+        return out
+
+    def category_of(self, heading: str) -> str:
+        """Which category a heading belongs to, or "" if it belongs to none."""
+        for name, headings in self.categories.items():
+            if heading in headings:
+                return name
+        return ""
 
 
 @dataclass(frozen=True)
@@ -192,8 +222,21 @@ def _validate(cfg: Config) -> None:
         raise ConfigError("image.margin_ratio must be in [0, 0.5)")
     if cfg.video.duration_seconds <= 0:
         raise ConfigError("video.duration_seconds must be positive")
-    if not cfg.source.subjects:
-        raise ConfigError("source.subjects must list at least one subject")
+    if not cfg.source.categories:
+        raise ConfigError("source.categories must define at least one category")
+    for name, headings in cfg.source.categories.items():
+        if not headings:
+            raise ConfigError(f"category {name!r} lists no subject headings")
+        # Nearly every living-animal heading has a ", Fossil" twin -- Mollusks
+        # 1364 alongside Mollusks, Fossil 277. Catching it here rather than
+        # trusting the list to stay right: a fossil plate in Marine would be
+        # noticed only on the review page, one plate at a time.
+        fossils = [h for h in headings if ", fossil" in h.lower()]
+        if fossils and name.lower() != "fossils":
+            raise ConfigError(
+                f"category {name!r} includes fossil heading(s) {fossils}; "
+                "fossil plates were deliberately excluded"
+            )
 
 
 def require_env(name: str) -> str:

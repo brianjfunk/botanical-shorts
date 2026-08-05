@@ -624,7 +624,9 @@ def cmd_harvest(args: argparse.Namespace) -> int:
     cfg = load_config(args.config)
     q = Queue(_queue_path(cfg))
 
-    result = harvest_mod.harvest(cfg, limit=args.limit, known_pages=q.page_ids)
+    result = harvest_mod.harvest_all(
+        cfg, per_category=args.per_category, known_pages=q.page_ids
+    )
 
     for line in pipeline.summarise_rejections(result.rejections):
         log.info("%s", line)
@@ -651,7 +653,12 @@ def cmd_harvest(args: argparse.Namespace) -> int:
     out.mkdir(parents=True, exist_ok=True)
     (out / "review.html").write_text(review.render(shown, images))
 
+    import collections as _c
+
+    by_cat = _c.Counter(str(e.get("category") or "?") for e in result.entries)
     print(f"\nharvested {added} new plates ({result.vision_calls} vision calls)")
+    for name, n in by_cat.most_common():
+        print(f"   {n:4}  {name}")
     print(f"   review page -> {out / 'review.html'}")
     print(f"   queue now: {q.counts()}")
     return 0
@@ -1112,7 +1119,13 @@ def main(argv: list[str] | None = None) -> int:
     p_audit.set_defaults(func=cmd_audit_pool)
 
     p_harv = sub.add_parser("harvest", help="walk the pool once and queue what survives")
-    p_harv.add_argument("--limit", type=int, default=600, help="candidates to walk")
+    p_harv.add_argument(
+        "--per-category",
+        type=int,
+        default=250,
+        help="candidates to walk per category; each gets its own budget so the "
+             "big categories cannot crowd out the small ones",
+    )
     p_harv.add_argument("--out", help="output directory for the review page")
     p_harv.set_defaults(func=cmd_harvest)
 

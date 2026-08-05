@@ -1,30 +1,52 @@
-# Botanical Shorts pipeline settings.
-# Secrets are never stored here -- see README for the environment variables.
-
 source:
-  # v1 is botanical-only, per the scope decision. Widening to the broader
-  # natural-history pool is adding subjects to this list -- nothing else
-  # in the pipeline is scope-aware.
+  # Seven categories. Every heading below was confirmed to carry titles by the
+  # Subjects workflow before it was added -- BHL answers an unknown heading
+  # with HTTP 200 and an empty list, exactly as it answers a real but thin one,
+  # which is how two dead subjects sat here for weeks unnoticed.
   #
-  # To widen, append e.g.:
-  #   - "Zoological illustration"
-  #   - "Entomology"
-  #   - "Birds"
-  # Confirmed live via `find-subjects`. "Botany, Pictorial works" and "Plants
-  # Pictorial works" were removed: both returned ZERO title-level publications,
-  # so the channel had been running on one subject the whole time. Nothing
-  # failed loudly, because a heading that does not exist looks exactly like one
-  # that is merely thin -- check any new subject with `find-subjects` first.
+  # Title counts as measured 2026-08-05:
+  #   Birds 4041   Ornithology 2524   Insects 2371   Fishes 1692
+  #   Mollusks 1364   Entomology 810   Reptiles 621   Amphibians 514
+  #   Fungi 478   Crustacea 461   Butterflies 381   Marine animals 333
+  #   Shells 277   Mushrooms 162   Sea birds 89   Cage birds 78
+  #   Corals 68   Jellyfishes 40   Diatoms 36   botany 5990
   #
-  # Title counts as measured:
-  #   botany                 5990
-  #   Botanical illustration  152
-  subjects:
-    - "Botanical illustration"
-    - "botany"
+  # Fossils were probed and rejected: every plate in the sample was monochrome,
+  # and most were text pages, geological diagrams or loose bone fragments
+  # rather than finished plates. Nearly every heading here has a ", Fossil"
+  # twin (Mollusks, Fossil carries 277 titles) and none of them belong -- the
+  # config loader refuses a fossil heading outright rather than trusting this
+  # list to stay right.
+  categories:
+    Botanical:
+      - "botany"
+      - "Botanical illustration"
+    Ornithology:
+      - "Birds"
+      - "Ornithology"
+      - "Sea birds"
+      - "Cage birds"
+    Entomology:
+      - "Insects"
+      - "Entomology"
+      - "Butterflies"
+    Marine:
+      - "Mollusks"
+      - "Crustacea"
+      - "Marine animals"
+      - "Shells"
+      - "Corals"
+      - "Jellyfishes"
+      - "Diatoms"
+    Ichthyology:
+      - "Fishes"
+    Herpetology:
+      - "Reptiles"
+      - "Amphibians"
+    Mycology:
+      - "Fungi"
+      - "Mushrooms"
 
-  # BHL flags page types per scanned page. "Illustration" is the plate marker;
-  # run `verify-bhl` to confirm the exact strings your queries return.
   page_types:
     - "Illustration"
     - "Foldout"

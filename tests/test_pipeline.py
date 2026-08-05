@@ -1159,7 +1159,10 @@ def test_verify_bhl_reports_a_dead_subject(capsys):
 
     real_client, real_cfg = bhl.BHLClient, cli.load_config
     cfg = load_config()
-    object.__setattr__(cfg.source, "subjects", ["botany", "made up heading"])
+    # Categories are the configured shape now; subjects is derived from them.
+    object.__setattr__(
+        cfg.source, "categories", {"Botanical": ["botany", "made up heading"]}
+    )
     bhl.BHLClient = Client
     cli.load_config = lambda *_a, **_k: cfg
     os.environ.setdefault("BHL_API_KEY", "test")
@@ -2287,3 +2290,119 @@ def test_the_daily_cap_ends_a_run_without_losing_what_uploaded(tmp_path, monkeyp
 
     assert len(published) == 2, "the cap stops the run rather than crashing it"
     assert [e["video_id"] for e in seen] == ["vid1", "vid2"]
+
+
+# -- categories --------------------------------------------------------------
+#
+# Seven categories now, assembled from 21 confirmed headings. A category is
+# what a viewer sees and what names a playlist; a heading is a cataloguing
+# artefact. Marine is one category built from seven headings, and Birds and
+# Ornithology are two headings for one category.
+
+def test_the_shipped_categories_are_the_seven_agreed():
+    cfg = load_config()
+    assert set(cfg.source.categories) == {
+        "Botanical", "Ornithology", "Entomology", "Marine",
+        "Ichthyology", "Herpetology", "Mycology",
+    }
+    # Marine absorbs jellyfish and diatoms, which is what Brian asked for and
+    # which the subject probe confirmed exist (40 and 36 titles).
+    assert "Jellyfishes" in cfg.source.categories["Marine"]
+    assert "Diatoms" in cfg.source.categories["Marine"]
+    assert cfg.source.category_of("Jellyfishes") == "Marine"
+    assert cfg.source.category_of("botany") == "Botanical"
+
+
+def test_fossil_headings_are_refused_outright():
+    """Nearly every living-animal heading has a ", Fossil" twin, and Mollusks,
+    Fossil alone carries 277 titles. A fossil plate reaching Marine would be
+    caught only on the review page, one plate at a time."""
+    import dataclasses
+
+    from botanical_shorts.config import ConfigError, _validate
+
+    cfg = load_config()
+    bad = dataclasses.replace(
+        cfg,
+        source=dataclasses.replace(
+            cfg.source,
+            categories={**cfg.source.categories, "Marine": ["Mollusks", "Mollusks, Fossil"]},
+        ),
+    )
+    with pytest.raises(ConfigError, match="fossil"):
+        _validate(bad)
+
+
+def test_subjects_flattens_categories_without_duplicates():
+    import dataclasses
+
+    cfg = load_config()
+    source = dataclasses.replace(
+        cfg.source, categories={"A": ["x", "y"], "B": ["y", "z"]}
+    )
+    assert source.subjects == ["x", "y", "z"]
+
+
+def test_publish_order_spaces_categories_apart_not_just_works():
+    """Five birds in a row from five different books would still read as five
+    birds in a row, so the spacing is applied to categories first."""
+    import itertools
+
+    from botanical_shorts.harvest import publish_order
+
+    entries = (
+        [{"page_id": f"b{i}", "title_id": f"W{i}", "category": "Ornithology"} for i in range(8)]
+        + [{"page_id": f"p{i}", "title_id": f"V{i}", "category": "Botanical"} for i in range(6)]
+        + [{"page_id": f"m{i}", "title_id": f"U{i}", "category": "Marine"} for i in range(4)]
+    )
+    order = publish_order(entries, seed=3)
+
+    assert len(order) == 18
+    longest = max(
+        len(list(g)) for _, g in itertools.groupby(e["category"] for e in order)
+    )
+    assert longest <= 2, f"a run of {longest} from one category reads as repetitive"
+
+
+def test_harvest_gives_each_category_its_own_budget(tmp_path, monkeypatch):
+    """Ornithology carries 6,730 titles against Mycology's 640. One walk over
+    the flattened list would spend everything on whichever came first."""
+    import dataclasses
+
+    from botanical_shorts import harvest as h
+
+    walked: list[tuple[str, ...]] = []
+    real_iter = bhl.iter_candidates
+
+    def spy(client, *, subjects, **kw):
+        walked.append(tuple(subjects))
+        return iter(())
+
+    monkeypatch.setenv("BHL_API_KEY", "test-key")
+    monkeypatch.setattr(bhl, "BHLClient", lambda key, session=None: object())
+    monkeypatch.setattr(bhl, "iter_candidates", spy)
+
+    cfg = _no_vision(_cfg_for_stub(history_path=tmp_path / "h.json"))
+    cfg = dataclasses.replace(
+        cfg,
+        source=dataclasses.replace(
+            cfg.source,
+            categories={"Big": ["a", "b"], "Small": ["c"]},
+        ),
+    )
+
+    h.harvest_all(cfg, per_category=50)
+    # One walk per category, each seeing only its own headings.
+    assert walked == [("a", "b"), ("c",)]
+
+
+def test_a_harvested_plate_records_its_category(tmp_path, monkeypatch):
+    from botanical_shorts import harvest as h
+
+    works = [{"title_id": "T1", "item_id": "I1", "page_ids": ["p0"]}]
+    _install_stub_pool(monkeypatch, works, {"p0": _distinct_plate(1)}, None)
+    cfg = _no_vision(_cfg_for_stub(history_path=tmp_path / "h.json"))
+
+    result = h.harvest(cfg, limit=5, subjects=["Jellyfishes"], category="Marine")
+    assert result.entries[0]["category"] == "Marine"
+    assert result.entries[0]["subject"] == "Jellyfishes"
