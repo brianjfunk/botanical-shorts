@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       subjects:
-        description: "BHL subject headings, space-separated (quote multi-word)"
+        description: "BHL subject headings, semicolon-separated (e.g. Jellyfishes;Corals;Shells)"
         type: string
         required: true
       label:
@@ -48,21 +48,32 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # Inputs come through the environment, never interpolated into the
+      # script. A subject like 'Reptiles, Fossil' carries a comma, and quoting
+      # it in the input made ${{ }} substitution close the surrounding string
+      # early -- git then read the tail as a pathspec. Semicolons separate
+      # subjects so commas inside a heading stay part of it.
       - name: Render the contact sheet
         env:
           BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+          SUBJECTS: ${{ inputs.subjects }}
+          LABEL: ${{ inputs.label }}
+          COUNT: ${{ inputs.count }}
         run: |
           if [ -z "$BHL_API_KEY" ]; then
             echo "::error::BHL_API_KEY is not set."
             exit 1
           fi
-          ARGS="--count ${{ inputs.count || '12' }}"
-          if [ -n "${{ inputs.label }}" ]; then
-            ARGS="$ARGS --label ${{ inputs.label }}"
+          IFS=';' read -ra SUBJ <<< "$SUBJECTS"
+          ARGS=(--count "${COUNT:-12}")
+          if [ -n "$LABEL" ]; then
+            ARGS+=(--label "$LABEL")
           fi
-          python -m botanical_shorts.cli -v sample-plates ${{ inputs.subjects }} $ARGS
+          python -m botanical_shorts.cli -v sample-plates "${SUBJ[@]}" "${ARGS[@]}"
 
       - name: Commit the samples
+        env:
+          SUBJECTS: ${{ inputs.subjects }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -73,7 +84,7 @@ jobs:
             echo "samples unchanged"
             exit 0
           fi
-          git commit -m "Sample plates: ${{ inputs.subjects }}"
+          git commit -m "Sample plates: $SUBJECTS"
           for attempt in 1 2 3; do
             git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
               git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0

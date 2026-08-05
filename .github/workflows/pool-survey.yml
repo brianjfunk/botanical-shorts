@@ -26,7 +26,7 @@ on:
         type: string
         default: ""
       subjects:
-        description: "Optional: measure these subjects instead of the configured ones (space-separated, quote multi-word)"
+        description: "Optional: measure these subjects instead of the configured ones (semicolon-separated)"
         type: string
         default: ""
       find_subjects:
@@ -64,19 +64,27 @@ jobs:
       - name: Survey the pool
         env:
           BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+          LIMIT: ${{ inputs.limit }}
+          SAMPLE: ${{ inputs.sample }}
+          TITLES: ${{ inputs.titles }}
+          SUBJECTS: ${{ inputs.subjects }}
         run: |
           if [ -z "$BHL_API_KEY" ]; then
             echo "::error::BHL_API_KEY is not set; cannot survey."
             exit 1
           fi
-          ARGS="--limit ${{ inputs.limit || '1500' }} --sample ${{ inputs.sample || '60' }}"
-          if [ -n "${{ inputs.titles }}" ]; then
-            ARGS="$ARGS --titles ${{ inputs.titles }}"
+          # Through the environment, never interpolated into the script: a
+          # heading like 'Reptiles, Fossil' needs quoting, and a quoted value
+          # substituted into a shell line closes the surrounding string early.
+          ARGS=(--limit "${LIMIT:-1500}" --sample "${SAMPLE:-60}")
+          if [ -n "$TITLES" ]; then
+            ARGS+=(--titles "$TITLES")
           fi
-          if [ -n "${{ inputs.subjects }}" ]; then
-            ARGS="$ARGS --subjects ${{ inputs.subjects }}"
+          if [ -n "$SUBJECTS" ]; then
+            IFS=';' read -ra SUBJ <<< "$SUBJECTS"
+            ARGS+=(--subjects "${SUBJ[@]}")
           fi
-          python -m botanical_shorts.cli pool-survey $ARGS | tee survey.txt
+          python -m botanical_shorts.cli pool-survey "${ARGS[@]}" | tee survey.txt
 
       # Two of three configured subjects returned zero titles, and nothing
       # failed loudly: a heading that does not exist looks exactly like one
