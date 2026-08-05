@@ -2018,3 +2018,79 @@ def test_the_max_tokens_ceiling_leaves_room_for_the_whole_verdict():
 
     source = _inspect.getsource(vision.inspect_plate)
     assert "max_tokens=1024" in source
+
+
+# -- harvest, queue, publish -------------------------------------------------
+#
+# The rebuild. The old shape was a first-match search called once per plate,
+# and nearly every mechanism added around it existed to make that repetition
+# survivable. One walk, no early stop, and ordering becomes a decision over the
+# resulting set rather than exclusion rules applied one plate at a time.
+
+def test_harvest_keeps_going_past_the_first_good_plate(tmp_path, monkeypatch):
+    from botanical_shorts import harvest as h
+
+    works = [{"title_id": f"T{i}", "item_id": f"I{i}", "page_ids": [f"p{i}"]} for i in range(5)]
+    plates = {f"p{i}": make_plate(900, 1200) for i in range(5)}
+    _install_stub_pool(monkeypatch, works, plates, None)
+    cfg = _no_vision(_cfg_for_stub(history_path=tmp_path / "h.json"))
+
+    result = h.harvest(cfg, limit=50)
+    assert len(result.entries) == 5
+    assert len(result.images) == 5
+    assert all(e["status"] == "pending" for e in result.entries)
+
+
+def test_harvest_takes_several_plates_from_one_volume(tmp_path, monkeypatch):
+    """The rule that held every batch to four.
+
+    One plate per volume was never chosen deliberately -- it came from "do not
+    let one book dominate". A volume of a plate book holds dozens of different
+    species, and the audit found 36 passing plates across only four works.
+    """
+    from botanical_shorts import harvest as h
+
+    works = [{"title_id": "T1", "item_id": "I1", "page_ids": [f"p{i}" for i in range(5)]}]
+    plates = {f"p{i}": make_plate(900, 1200) for i in range(5)}
+    _install_stub_pool(monkeypatch, works, plates, None)
+    cfg = _no_vision(_cfg_for_stub(history_path=tmp_path / "h.json"))
+
+    assert len(h.harvest(cfg, limit=50).entries) == 5
+
+
+def test_publish_order_spaces_plates_from_the_same_work_apart():
+    """Brian's requirement: no long string of very similar images in a row."""
+    from botanical_shorts.harvest import publish_order
+
+    entries = (
+        [{"page_id": f"a{i}", "title_id": "A"} for i in range(6)]
+        + [{"page_id": f"b{i}", "title_id": "B"} for i in range(3)]
+        + [{"page_id": f"c{i}", "title_id": "C"} for i in range(3)]
+    )
+    order = publish_order(entries, seed=1)
+
+    assert len(order) == 12
+    assert {e["page_id"] for e in order} == {e["page_id"] for e in entries}
+
+    # The dominant work may repeat -- with half the queue it must -- but never
+    # twice running while another work still has plates left.
+    runs = [
+        (a["title_id"], b["title_id"]) for a, b in zip(order, order[1:])
+    ]
+    assert not any(x == y == "B" for x, y in runs)
+    assert not any(x == y == "C" for x, y in runs)
+    longest = max(
+        len(list(g)) for _, g in __import__("itertools").groupby(e["title_id"] for e in order)
+    )
+    assert longest <= 2, f"a run of {longest} from one work is a string of similar images"
+
+
+def test_publish_order_is_random_but_reproducible_with_a_seed():
+    from botanical_shorts.harvest import publish_order
+
+    entries = [{"page_id": str(i), "title_id": f"T{i % 4}"} for i in range(20)]
+    a = [e["page_id"] for e in publish_order(entries, seed=7)]
+    b = [e["page_id"] for e in publish_order(entries, seed=7)]
+    c = [e["page_id"] for e in publish_order(entries, seed=8)]
+    assert a == b
+    assert a != c, "different seeds must give different orders"

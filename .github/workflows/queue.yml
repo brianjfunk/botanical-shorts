@@ -1,0 +1,110 @@
+name: Queue
+
+# The three halves of the loop, deliberately separate runs.
+#
+#   harvest      -- walk the pool once, judge everything, render the review page
+#   approve      -- settle the review; retire rejects, order the rest
+#   publish-next -- upload the next N approved plates, asking nothing of anyone
+#
+# Review is a queue-filling activity, not a per-upload one. Harvest a hundred
+# and fifty, look once, and the survivors publish for weeks. The fallback is
+# still to hold: an empty approved queue publishes nothing rather than
+# publishing something nobody looked at.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "which half of the loop to run"
+        type: choice
+        options: [harvest, approve, publish-next]
+        default: harvest
+      limit:
+        description: "harvest only: how many candidates to walk"
+        type: string
+        default: "600"
+      decision:
+        description: "approve only: the line from the review page"
+        type: string
+        default: "approve all"
+      count:
+        description: "publish-next only: how many to upload"
+        type: string
+        default: "10"
+
+concurrency:
+  group: queue
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  queue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install ffmpeg
+        if: inputs.mode == 'publish-next'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Inputs travel through the environment, never interpolated into the
+      # script: a decision line is free text and would otherwise be shell.
+      - name: Harvest
+        if: inputs.mode == 'harvest'
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LIMIT: ${{ inputs.limit }}
+        run: python -m botanical_shorts.cli -v harvest --limit "${LIMIT:-600}"
+
+      - name: Approve
+        if: inputs.mode == 'approve'
+        env:
+          DECISION: ${{ inputs.decision }}
+        run: python -m botanical_shorts.cli -v approve "$DECISION"
+
+      - name: Publish the next plates
+        if: inputs.mode == 'publish-next'
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          COUNT: ${{ inputs.count }}
+        run: python -m botanical_shorts.cli -v publish-next --count "${COUNT:-10}"
+
+      # Always, and before anything after it can fail: the queue records what
+      # is approved and what already went live. Losing it means republishing.
+      - name: Commit the queue
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add review/ state/ 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
+          git commit -m "Queue ${{ inputs.mode }} ($(date -u +%Y-%m-%d))"
+          for attempt in 1 2 3; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
+              git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $((attempt * 4))
+          done
+          echo "::error::could not push the queue"
+          exit 1

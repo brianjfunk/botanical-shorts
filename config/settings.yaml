@@ -112,13 +112,15 @@ vision:
   # Raised from 12 once per-work fatigue stopped a single black-backdrop volume
   # consuming an entire walk: the budget now gets spent on plates from many
   # different works rather than on eighteen views of the same bad scan.
-  max_vision_calls: 25
-  # The pool audit showed a group of plates that cleared every local gate and
-  # were never inspected because the budget ran out -- and Brian's read was
-  # that they were decent images. Rather than stopping the walk there, a few
-  # per batch go to review flagged, since a human is already looking. Capped,
-  # because in a bad stretch of the pool the model rejects nearly everything it
-  # sees, and the overflow there is not a windfall.
+  # Now a per-HARVEST budget rather than a per-plate one, which is what makes
+  # it meaningful: the harvest spends one call per plate that cleared the cheap
+  # local gates, once per refill, instead of spending them on whatever a
+  # first-match walk tripped over while hunting. At Sonnet rates this is a
+  # dollar or two per refill, and a refill lasts weeks.
+  max_vision_calls: 250
+  # Only the retired batch path reads this. The harvest has no mid-walk budget
+  # crisis to work around: it inspects what it can afford and stops, and the
+  # plates it never reached are simply still in the pool for the next refill.
   max_uninspected_per_batch: 3
 
 image:

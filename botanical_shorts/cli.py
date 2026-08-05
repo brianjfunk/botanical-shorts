@@ -605,6 +605,132 @@ def cmd_build_batch(args: argparse.Namespace) -> int:
     return 0
 
 
+def _queue_path(cfg) -> Path:
+    return cfg.history_path.parent / "queue.json"
+
+
+def cmd_harvest(args: argparse.Namespace) -> int:
+    """Walk the pool once, judge everything, and render the queue for review.
+
+    Uploads nothing. Appends what survived to the queue as pending, and writes
+    the review page. Run this when the approved queue is running low, not per
+    batch -- the whole point of the queue is that publishing does not wait on
+    anyone.
+    """
+    from . import harvest as harvest_mod
+    from . import review
+    from .queue import Queue
+
+    cfg = load_config(args.config)
+    q = Queue(_queue_path(cfg))
+
+    result = harvest_mod.harvest(cfg, limit=args.limit, known_pages=q.page_ids)
+
+    for line in pipeline.summarise_rejections(result.rejections):
+        log.info("%s", line)
+
+    if not result.entries:
+        print("the harvest found nothing new", file=sys.stderr)
+        return 1
+
+    added = q.add(result.entries)
+    q.save()
+
+    # The page shows only what this harvest added, numbered from one, which is
+    # what the reply refers to.
+    pending = q.with_status("pending")
+    by_page = {str(e["page_id"]): i for i, e in enumerate(result.entries)}
+    images = [
+        result.images[by_page[str(e["page_id"])]]
+        for e in pending
+        if str(e["page_id"]) in by_page
+    ]
+    shown = [e for e in pending if str(e["page_id"]) in by_page]
+
+    out = Path(args.out or "review")
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "review.html").write_text(review.render(shown, images))
+
+    print(f"\nharvested {added} new plates ({result.vision_calls} vision calls)")
+    print(f"   review page -> {out / 'review.html'}")
+    print(f"   queue now: {q.counts()}")
+    return 0
+
+
+def cmd_approve(args: argparse.Namespace) -> int:
+    """Settle a review: retire the rejects, approve the rest, fix the order."""
+    from . import harvest as harvest_mod
+    from .queue import APPROVED, Queue, parse_review_reply
+
+    cfg = load_config(args.config)
+    q = Queue(_queue_path(cfg))
+    pending = q.with_status("pending")
+    if not pending:
+        print("nothing is awaiting review", file=sys.stderr)
+        return 1
+
+    try:
+        rejected_idx = parse_review_reply(args.decision)
+    except ValueError as exc:
+        print(f"could not read that reply: {exc}", file=sys.stderr)
+        return 2
+
+    out_of_range = [i + 1 for i in rejected_idx if i >= len(pending)]
+    if out_of_range:
+        print(
+            f"the page showed {len(pending)} plates; {out_of_range} is out of range",
+            file=sys.stderr,
+        )
+        return 2
+
+    rejects = [e for i, e in enumerate(pending) if i in rejected_idx]
+    keepers = [e for i, e in enumerate(pending) if i not in rejected_idx]
+
+    # Retired before anything else touches the queue: a rejected plate must
+    # never be offered again even if the rest of this command fails.
+    if rejects:
+        harvest_mod.retire(cfg, rejects)
+
+    order = harvest_mod.publish_order(q.with_status(APPROVED) + keepers, seed=args.seed)
+    approved, rejected = q.resolve(rejected_idx, order=order)
+    q.save()
+
+    print(f"approved {len(keepers)}, rejected {rejected}")
+    print(f"   queue now: {q.counts()}")
+    return 0
+
+
+def cmd_publish_next(args: argparse.Namespace) -> int:
+    """Upload the next N approved plates. Asks nothing of anyone."""
+    from . import harvest as harvest_mod
+    from . import notify
+    from .queue import Queue
+
+    cfg = load_config(args.config)
+    q = Queue(_queue_path(cfg))
+    due = q.next_approved(args.count)
+    if not due:
+        print("the approved queue is empty; run a harvest and review it", file=sys.stderr)
+        return 1
+
+    published = []
+    try:
+        published = harvest_mod.publish_from_queue(cfg, due)
+    finally:
+        # Recorded even if the upload run dies partway -- YouTube's daily cap
+        # ends a run mid-batch, and anything already live must not be offered
+        # again.
+        for entry in published:
+            q.mark_published(entry["page_id"], entry["video_id"])
+        q.save()
+
+    for entry in published:
+        notify.notify(entry, enabled=cfg.notify.enabled)
+    print(f"\nuploaded {len(published)} of {len(due)}")
+    print(f"   queue now: {q.counts()}")
+    return 0
+
+
 def cmd_audit_pool(args: argparse.Namespace) -> int:
     """Lay out a slice of the pool with each candidate's verdict, and publish nothing.
 
@@ -971,6 +1097,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_audit.add_argument("--out", help="output directory")
     p_audit.set_defaults(func=cmd_audit_pool)
+
+    p_harv = sub.add_parser("harvest", help="walk the pool once and queue what survives")
+    p_harv.add_argument("--limit", type=int, default=600, help="candidates to walk")
+    p_harv.add_argument("--out", help="output directory for the review page")
+    p_harv.set_defaults(func=cmd_harvest)
+
+    p_appr = sub.add_parser("approve", help="settle a review and order the queue")
+    p_appr.add_argument("decision", help="the line from the review page")
+    p_appr.add_argument(
+        "--seed", type=int, help="fix the shuffle, for reproducing an order exactly"
+    )
+    p_appr.set_defaults(func=cmd_approve)
+
+    p_next = sub.add_parser("publish-next", help="upload the next N approved plates")
+    p_next.add_argument("--count", type=int, default=5, help="how many to upload")
+    p_next.set_defaults(func=cmd_publish_next)
 
     p_preview = sub.add_parser("preview", help="render letterbox treatments for sign-off")
     p_preview.add_argument("image", help="path to a source plate image")
