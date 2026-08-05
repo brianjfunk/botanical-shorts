@@ -45,6 +45,22 @@ def _anthropic_client():
     return Anthropic(api_key=require_env("ANTHROPIC_API_KEY"))
 
 
+# One work contributes up to max_items_per_title x max_pages_per_item
+# consecutive candidates -- eighteen, at the current settings. Scan condition
+# is a property of the digitisation, not the page, so a volume shot against a
+# black backdrop fails every plate in it for the same reason. Left alone, one
+# such work eats eighteen full-resolution downloads and can exhaust the walk
+# before a usable plate surfaces; this is what stopped the first real batch at
+# zero. After this many hard rejections the rest of the work is skipped
+# without paying for it.
+MAX_TITLE_STRIKES = 4
+
+# A separate, smaller allowance for vision calls that failed outright rather
+# than returning a verdict. One flaky response should not end a run, but a
+# sustained outage should stop quickly rather than retrying down the pool.
+MAX_VISION_ERRORS = 4
+
+
 def select_and_build(
     cfg: Config,
     *,
@@ -52,8 +68,16 @@ def select_and_build(
     session: requests.Session | None = None,
     vision_client: Any = None,
     dry_run: bool = False,
+    blocked_pages: set[str] | None = None,
 ) -> RunResult:
-    """Find one publishable plate and produce the framed still and video."""
+    """Find one publishable plate and produce the framed still and video.
+
+    ``blocked_pages`` is an optional caller-owned set of pages already known to
+    fail a gate. Every gate here is deterministic given the scan, so a page
+    rejected once will be rejected again; a batch passes the same set through
+    each selection so it pays for each dud download once rather than once per
+    plate. Mutated in place as new duds are found.
+    """
     session = session or requests.Session()
     client = bhl.BHLClient(require_env("BHL_API_KEY"), session=session)
 
@@ -62,6 +86,9 @@ def select_and_build(
 
     rejections: list[Rejection] = []
     vision_calls = 0
+    vision_errors = 0
+    blocked = blocked_pages if blocked_pages is not None else set()
+    title_strikes: dict[str, int] = {}
 
     candidates = bhl.iter_candidates(
         client,
@@ -75,14 +102,29 @@ def select_and_build(
         limit=cfg.source.max_candidates,
         # Published work is filtered inside the walk so it never consumes the
         # candidate budget, and the window rotates as the channel grows.
-        skip_pages=history.page_ids,
+        skip_pages=set(history.page_ids) | blocked,
         skip_items=history.item_ids,
         skip_titles=history.recent_title_ids(cfg.source.title_cooldown),
         title_offset=len(history.entries),
     )
 
+    def strike(candidate: bhl.PageCandidate) -> None:
+        title_strikes[candidate.title_id] = title_strikes.get(candidate.title_id, 0) + 1
+        blocked.add(candidate.page_id)
+
     for candidate in candidates:
         page_id = candidate.page_id
+
+        if title_strikes.get(candidate.title_id, 0) >= MAX_TITLE_STRIKES:
+            rejections.append(
+                Rejection(
+                    page_id,
+                    "title",
+                    f"work {candidate.title_id} already failed {MAX_TITLE_STRIKES} "
+                    "plates on this walk; skipping the rest of it",
+                )
+            )
+            continue
 
         if history.has_page(page_id):
             rejections.append(Rejection(page_id, "history", "page already published"))
@@ -110,6 +152,7 @@ def select_and_build(
             imaging.check_ink_coverage(img, cfg.image.min_ink_coverage)
         except (bhl.BHLError, imaging.ImageError, requests.RequestException) as exc:
             rejections.append(Rejection(page_id, "download", str(exc)))
+            strike(candidate)
             continue
 
         vision_verdict: VisionVerdict | None = None
@@ -117,10 +160,26 @@ def select_and_build(
             if vision_calls >= cfg.vision.max_vision_calls:
                 rejections.append(Rejection(page_id, "vision", "vision call budget exhausted"))
                 break
-            vision_calls += 1
             # A rejected credential is fatal, not a property of this candidate;
             # let it propagate rather than burning the budget on every plate.
             vision_verdict = inspect_plate(vision_client, img, model=cfg.vision.model)
+            if vision_verdict.error:
+                # Not a verdict on the plate, so it does not spend the call
+                # budget and does not retire the page: the plate goes back in
+                # the pool for a later run to judge.
+                vision_errors += 1
+                rejections.append(
+                    Rejection(page_id, "vision", f"inspection failed: {vision_verdict.error}")
+                )
+                if vision_errors >= MAX_VISION_ERRORS:
+                    log.error(
+                        "%d vision calls failed outright; stopping rather than "
+                        "walking the pool against a broken API",
+                        vision_errors,
+                    )
+                    break
+                continue
+            vision_calls += 1
             ok, reason = passes(
                 vision_verdict,
                 min_quality=cfg.vision.min_scan_quality,
@@ -128,6 +187,7 @@ def select_and_build(
             )
             if not ok:
                 rejections.append(Rejection(page_id, "vision", reason))
+                strike(candidate)
                 continue
             if cfg.vision.caption_mode == "log_only" and not vision_verdict.caption_embedded:
                 # Recorded, deliberately not enforced in v1.
@@ -149,6 +209,7 @@ def select_and_build(
             )
         except imaging.ImageError as exc:
             rejections.append(Rejection(page_id, "framing", str(exc)))
+            strike(candidate)
             continue
 
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
@@ -357,10 +418,13 @@ def build_batch(cfg: Config, *, count: int) -> list[dict[str, Any]]:
     """
     history = History(cfg.history_path)
     batch: list[dict[str, Any]] = []
+    # Shared across the whole batch: every walk starts from the same subject
+    # list, so without this each selection re-downloads the same duds.
+    blocked: set[str] = set()
 
     for n in range(count):
         log.info("--- selecting %d of %d ---", n + 1, count)
-        result = select_and_build(cfg, history=history, dry_run=True)
+        result = select_and_build(cfg, history=history, dry_run=True, blocked_pages=blocked)
         if not result.accepted:
             # Report *why*, the way _run_once does. A batch that stops at zero
             # is indistinguishable from an empty pool without this, and the

@@ -1232,3 +1232,213 @@ def test_rejections_are_recorded_so_a_plate_is_never_reoffered(tmp_path):
     assert reloaded.has_page("9")
     assert reloaded.has_item("8")
     assert "7" in reloaded.recent_title_ids(10)
+
+
+# -- regression: one bad volume must not consume the whole walk ---------------
+#
+# The first real batch stopped at zero plates. The tally showed 135 candidates
+# rejected, 122 of them at download with "border luminance below 60" -- not a
+# thin pool, but a handful of black-backdrop volumes each contributing eighteen
+# consecutive candidates and each failing all eighteen for the same reason.
+# Meanwhile twelve vision calls were charged for nine answers, because a call
+# that failed outright was billed against the budget like a verdict.
+
+class _StubBHLClient:
+    """Stands in for the network: a fixed pool of works, items and pages."""
+
+    def __init__(self, works):
+        self.works = works
+
+    def subject_titles(self, subject):
+        return [{"TitleID": w["title_id"], "Year": "1850", "BHLType": "Title"} for w in self.works]
+
+    def get_title_metadata(self, title_id):
+        work = next(w for w in self.works if w["title_id"] == title_id)
+        return {
+            "TitleID": title_id,
+            "FullTitle": work.get("title", "A Work"),
+            "Year": "1850",
+            "Items": [{"ItemID": work["item_id"]}],
+        }
+
+    def get_item_metadata(self, item_id):
+        work = next(w for w in self.works if w["item_id"] == item_id)
+        return {
+            "ItemID": item_id,
+            "RightsStatus": "Public domain",
+            "Pages": [
+                {"PageID": pid, "PageTypes": ["Illustration"]} for pid in work["page_ids"]
+            ],
+        }
+
+
+def _dark_plate():
+    """A scan bordered by black: exactly what the border gate exists to catch."""
+    img = Image.new("RGB", (900, 1200), (6, 6, 6))
+    img.paste(make_plate(700, 1000), (100, 100))
+    return img
+
+
+def _install_stub_pool(monkeypatch, works, plates, vision_client):
+    """Wire select_and_build to an in-memory pool. ``plates`` maps page id to image."""
+    from botanical_shorts import pipeline
+
+    monkeypatch.setenv("BHL_API_KEY", "test-key")
+    monkeypatch.setattr(bhl, "BHLClient", lambda key, session=None: _StubBHLClient(works))
+
+    downloads: list[str] = []
+
+    def fake_download(candidate, session=None, timeout=90):
+        downloads.append(candidate.page_id)
+        return plates[candidate.page_id]
+
+    monkeypatch.setattr(bhl, "download_page_image", fake_download)
+    monkeypatch.setattr(pipeline.imaging, "load_image", lambda data: data)
+    return downloads
+
+
+def _cfg_for_stub(**overrides):
+    """The shipped config with the stub pool's dimensions. Config is frozen, so
+    every adjustment goes through ``replace`` rather than assignment."""
+    import dataclasses
+
+    cfg = load_config()
+    source = dataclasses.replace(
+        cfg.source, max_pages_per_item=6, max_items_per_title=1, title_cooldown=0
+    )
+    image = dataclasses.replace(cfg.image, min_source_width=100, min_source_height=100)
+    return dataclasses.replace(cfg, source=source, image=image, **overrides)
+
+
+def _no_vision(cfg):
+    import dataclasses
+
+    return dataclasses.replace(cfg, vision=dataclasses.replace(cfg.vision, enabled=False))
+
+
+def test_a_black_backdrop_volume_is_abandoned_after_a_few_plates(tmp_path, monkeypatch):
+    from botanical_shorts import pipeline
+
+    bad = {"title_id": "T1", "item_id": "I1", "page_ids": [f"b{i}" for i in range(6)]}
+    good = {"title_id": "T2", "item_id": "I2", "page_ids": ["g0"]}
+    plates = {pid: _dark_plate() for pid in bad["page_ids"]}
+    plates["g0"] = make_plate(900, 1200)
+
+    downloads = _install_stub_pool(monkeypatch, [bad, good], plates, None)
+    cfg = _no_vision(_cfg_for_stub())
+
+    result = pipeline.select_and_build(
+        cfg, history=History(tmp_path / "h.json"), dry_run=True
+    )
+
+    assert result.accepted, "the good plate two works along must still be reached"
+    assert result.summary["page_id"] == "g0"
+    # Four strikes, then the rest of that work is skipped without downloading.
+    assert len([d for d in downloads if d.startswith("b")]) == pipeline.MAX_TITLE_STRIKES
+    assert any(r.stage == "title" for r in result.rejections)
+
+
+def test_a_failed_vision_call_does_not_spend_the_call_budget(tmp_path, monkeypatch):
+    from botanical_shorts import pipeline
+
+    work = {"title_id": "T1", "item_id": "I1", "page_ids": [f"p{i}" for i in range(6)]}
+    plates = {pid: make_plate(900, 1200) for pid in work["page_ids"]}
+    _install_stub_pool(monkeypatch, [work], plates, None)
+
+    import dataclasses
+    cfg = _cfg_for_stub()
+    cfg = dataclasses.replace(cfg, vision=dataclasses.replace(cfg.vision, max_vision_calls=1))
+
+    calls = {"n": 0}
+
+    def fake_inspect(client, img, *, model, attempts=2):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return VisionVerdict(0, False, False, False, False, "", [], error="529 overloaded")
+        return VisionVerdict(9, True, True, True, False, "Iris", [])
+
+    monkeypatch.setattr(pipeline, "inspect_plate", fake_inspect)
+
+    result = pipeline.select_and_build(
+        cfg, history=History(tmp_path / "h.json"), dry_run=True, vision_client=object()
+    )
+
+    assert result.accepted, "a budget of one must survive one failed call"
+    assert calls["n"] == 2
+
+
+def test_a_sustained_vision_outage_stops_rather_than_walking_the_pool(tmp_path, monkeypatch):
+    from botanical_shorts import pipeline
+
+    work = {"title_id": "T1", "item_id": "I1", "page_ids": [f"p{i}" for i in range(6)]}
+    plates = {pid: make_plate(900, 1200) for pid in work["page_ids"]}
+    _install_stub_pool(monkeypatch, [work], plates, None)
+
+    cfg = _cfg_for_stub()
+    calls = {"n": 0}
+
+    def always_fails(client, img, *, model, attempts=2):
+        calls["n"] += 1
+        return VisionVerdict(0, False, False, False, False, "", [], error="529 overloaded")
+
+    monkeypatch.setattr(pipeline, "inspect_plate", always_fails)
+
+    result = pipeline.select_and_build(
+        cfg, history=History(tmp_path / "h.json"), dry_run=True, vision_client=object()
+    )
+
+    assert not result.accepted
+    assert calls["n"] == pipeline.MAX_VISION_ERRORS
+    # An outage must not retire the plates: they go back in the pool.
+    assert not any(r.stage == "vision" and "budget" in r.reason for r in result.rejections)
+
+
+def test_a_batch_pays_for_each_dud_download_only_once(tmp_path, monkeypatch):
+    from botanical_shorts import pipeline
+
+    # Two separate works, because one plate per volume is a rule of the walk.
+    bad = {"title_id": "T1", "item_id": "I1", "page_ids": ["b0"]}
+    good = {"title_id": "T2", "item_id": "I2", "page_ids": ["g0"]}
+    more = {"title_id": "T3", "item_id": "I3", "page_ids": ["g1"]}
+    plates = {"b0": _dark_plate(), "g0": make_plate(900, 1200), "g1": make_plate(900, 1200)}
+
+    downloads = _install_stub_pool(monkeypatch, [bad, good, more], plates, None)
+    cfg = _no_vision(
+        _cfg_for_stub(history_path=tmp_path / "h.json", output_dir=tmp_path / "build")
+    )
+
+    batch = pipeline.build_batch(cfg, count=2)
+
+    assert [e["page_id"] for e in batch] == ["g0", "g1"]
+    assert downloads.count("b0") == 1, "the dud must not be re-downloaded per plate"
+
+
+def test_an_empty_vision_response_is_retried_before_being_believed():
+    from botanical_shorts import vision
+
+    class _Block:
+        type = "text"
+        text = ""
+
+    class _Msg:
+        content = [_Block()]
+
+    class _Good:
+        type = "text"
+        text = '{"scan_quality": 9, "is_illustration": true, "subject_summary": "Iris"}'
+
+    class _Messages:
+        def __init__(self):
+            self.calls = 0
+
+        def create(self, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return _Msg()
+            return type("M", (), {"content": [_Good()]})()
+
+    client = type("C", (), {"messages": _Messages()})()
+    verdict = vision.inspect_plate(client, make_plate(), model="claude-sonnet-5")
+    assert not verdict.error
+    assert verdict.scan_quality == 9
+    assert client.messages.calls == 2

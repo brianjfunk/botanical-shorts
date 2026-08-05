@@ -141,40 +141,57 @@ def _parse(text: str) -> dict:
         raise
 
 
-def inspect_plate(client, img: Image.Image, *, model: str) -> VisionVerdict:
-    """Run both vision judgements on one candidate plate."""
+def inspect_plate(client, img: Image.Image, *, model: str, attempts: int = 2) -> VisionVerdict:
+    """Run both vision judgements on one candidate plate.
+
+    Retried once by default. The failures worth retrying are not properties of
+    the plate: a 429 or 529 from the API, or a response that came back empty
+    and blew up in :func:`_parse`. Treating either as a verdict rejects a
+    perfectly good plate and -- worse, since the caller meters vision calls --
+    spends budget proving nothing. An auth failure is the exception and is
+    raised immediately, because no retry can fix a bad key.
+    """
     encoded, media_type = _encode(img)
-    try:
-        message = client.messages.create(
-            model=model,
-            max_tokens=512,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": media_type,
-                                "data": encoded,
+    raw = ""
+    last: Exception | None = None
+
+    for attempt in range(max(1, attempts)):
+        try:
+            message = client.messages.create(
+                model=model,
+                max_tokens=512,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": encoded,
+                                },
                             },
-                        },
-                        {"type": "text", "text": PROMPT},
-                    ],
-                }
-            ],
-        )
-        raw = "".join(block.text for block in message.content if block.type == "text")
-        data = _parse(raw)
-    except Exception as exc:
-        if getattr(exc, "status_code", None) in (401, 403):
-            raise VisionAuthError(
-                "Anthropic rejected the API key (HTTP "
-                f"{getattr(exc, 'status_code', '?')}). Check the ANTHROPIC_API_KEY "
-                "secret; no amount of retrying will help."
-            ) from exc
-        log.warning("vision inspection failed: %s", exc)
+                            {"type": "text", "text": PROMPT},
+                        ],
+                    }
+                ],
+            )
+            raw = "".join(block.text for block in message.content if block.type == "text")
+            data = _parse(raw)
+            break
+        except Exception as exc:
+            if getattr(exc, "status_code", None) in (401, 403):
+                raise VisionAuthError(
+                    "Anthropic rejected the API key (HTTP "
+                    f"{getattr(exc, 'status_code', '?')}). Check the ANTHROPIC_API_KEY "
+                    "secret; no amount of retrying will help."
+                ) from exc
+            last = exc
+            log.warning(
+                "vision inspection failed (attempt %d of %d): %s", attempt + 1, attempts, exc
+            )
+    else:
         return VisionVerdict(
             scan_quality=0,
             caption_embedded=False,
@@ -183,7 +200,7 @@ def inspect_plate(client, img: Image.Image, *, model: str) -> VisionVerdict:
             is_spread=False,
             subject_summary="",
             issues=[],
-            error=str(exc),
+            error=str(last),
         )
 
     return VisionVerdict(
