@@ -46,14 +46,14 @@
       "subject": "Botanical illustration"
     },
     "inspected": true,
-    "scan_quality": 8,
+    "scan_quality": 7,
     "caption_embedded": true,
     "species_name_visible": true,
     "is_spread": false,
     "subject_summary": "Dichorisandra ovata",
     "vision_issues": [
       "visible pencil sketch underneath",
-      "faint background outline sketch"
+      "faint bleed-through lines"
     ],
     "caption_mode": "log_only",
     "image_path": "/home/runner/work/botanical-shorts/botanical-shorts/build/20260805-54760696.png"
@@ -62,8 +62,8 @@
     "page_id": "48227263",
     "item_id": "187320",
     "title_id": "100572",
-    "title": "Cypripedium acaule (pink lady's slipper orchid)",
-    "description": "Cypripedium acaule (pink lady's slipper orchid).\n\nSource\n[Water-color sketches of plants of North America and Europe]. Sharp, Helen.. Biodiversity Heritage Library.\nhttps://www.biodiversitylibrary.org/page/48227263\nDigitised by Internet Archive.\n\nRights: Public domain. The BHL considers that this work is no longer under copyright protection.\n\nPresented as scanned, with no added text or digital retouching.",
+    "title": "Pink lady's slipper orchid, Cypripedium acaule",
+    "description": "Pink lady's slipper orchid, Cypripedium acaule.\n\nSource\n[Water-color sketches of plants of North America and Europe]. Sharp, Helen.. Biodiversity Heritage Library.\nhttps://www.biodiversitylibrary.org/page/48227263\nDigitised by Internet Archive.\n\nRights: Public domain. The BHL considers that this work is no longer under copyright protection.\n\nPresented as scanned, with no added text or digital retouching.",
     "citation": "[Water-color sketches of plants of North America and Europe]. Sharp, Helen.. Biodiversity Heritage Library.",
     "page_url": "https://www.biodiversitylibrary.org/page/48227263",
     "thumb_url": "https://www.biodiversitylibrary.org/pagethumb/48227263",
@@ -111,44 +111,42 @@
     "caption_embedded": false,
     "species_name_visible": false,
     "is_spread": false,
-    "subject_summary": "Cypripedium acaule (pink lady's slipper orchid)",
-    "vision_issues": [
-      "unfinished pencil leaf sketch"
-    ],
+    "subject_summary": "Pink lady's slipper orchid, Cypripedium acaule",
+    "vision_issues": [],
     "caption_mode": "log_only",
     "image_path": "/home/runner/work/botanical-shorts/botanical-shorts/build/20260805-48227263.png"
   },
   {
-    "page_id": "53615640",
+    "page_id": "53615638",
     "item_id": "227613",
     "title_id": "132203",
-    "title": "Crowfoot (1760)",
-    "description": "Crowfoot.\n\nSource\nThe florist : containing sixty plates of the most beautiful flowers regularly disposed in their succession of blowing. To which is added an accurate description of their colours with instructions for drawing and painting according to nature : being a new work intended for the use & amusement of gentlemen and ladies delighting in that art. Sayer, Robert. 1760. Printed for Robt. Sayer ..., T. Bowles ..., John Bowles & Son. Biodiversity Heritage Library.\nhttps://www.biodiversitylibrary.org/page/53615640\nDigitised by Internet Archive.\n\nRights: Public domain. The BHL considers that this work is no longer under copyright protection.\n\nPresented as scanned, with no added text or digital retouching.",
+    "title": "Hen & Chicken Daisy (1760)",
+    "description": "Hen & Chicken Daisy.\n\nSource\nThe florist : containing sixty plates of the most beautiful flowers regularly disposed in their succession of blowing. To which is added an accurate description of their colours with instructions for drawing and painting according to nature : being a new work intended for the use & amusement of gentlemen and ladies delighting in that art. Sayer, Robert. 1760. Printed for Robt. Sayer ..., T. Bowles ..., John Bowles & Son. Biodiversity Heritage Library.\nhttps://www.biodiversitylibrary.org/page/53615638\nDigitised by Internet Archive.\n\nRights: Public domain. The BHL considers that this work is no longer under copyright protection.\n\nPresented as scanned, with no added text or digital retouching.",
     "citation": "The florist : containing sixty plates of the most beautiful flowers regularly disposed in their succession of blowing. To which is added an accurate description of their colours with instructions for drawing and painting according to nature : being a new work intended for the use & amusement of gentlemen and ladies delighting in that art. Sayer, Robert. 1760. Printed for Robt. Sayer ..., T. Bowles ..., John Bowles & Son. Biodiversity Heritage Library.",
-    "page_url": "https://www.biodiversitylibrary.org/page/53615640",
-    "thumb_url": "https://www.biodiversitylibrary.org/pagethumb/53615640",
+    "page_url": "https://www.biodiversitylibrary.org/page/53615638",
+    "thumb_url": "https://www.biodiversitylibrary.org/pagethumb/53615638",
     "subject": "Botanical illustration",
     "rights": "Public domain. The BHL considers that this work is no longer under copyright protection.",
     "license": "",
     "licence_reason": "public-domain status 'Public domain. The BHL considers that this work is no longer under copyright protection.'",
     "source_size": [
-      2039,
-      3106
+      1992,
+      3127
     ],
     "plate_size": [
       950,
-      1447
+      1491
     ],
     "fill_color": [
-      204,
-      168,
-      98
+      228,
+      192,
+      120
     ],
     "upscaled": false,
     "letterbox": "sampled_paper",
     "duration_seconds": 2.0,
     "candidate": {
-      "page_id": "53615640",
+      "page_id": "53615638",
       "item_id": "227613",
       "title_id": "132203",
       "title": "The florist : containing sixty plates of the most beautiful flowers regularly disposed in their succession of blowing. To which is added an accurate description of their colours with instructions for drawing and painting according to nature : being a new work intended for the use & amusement of gentlemen and ladies delighting in that art",
@@ -171,111 +169,48 @@
     "caption_embedded": true,
     "species_name_visible": true,
     "is_spread": false,
-    "subject_summary": "Crowfoot",
+    "subject_summary": "Hen & Chicken Daisy",
     "vision_issues": [
-      "staining near edges",
-      "torn upper right corner",
-      "foxing spots"
+      "staining upper right",
+      "faint discoloration on stems"
     ],
     "caption_mode": "log_only",
-    "image_path": "/home/runner/work/botanical-shorts/botanical-shorts/build/20260805-53615640.png"
+    "image_path": "/home/runner/work/botanical-shorts/botanical-shorts/build/20260805-53615638.png"
   },
   {
-    "page_id": "55372385",
-    "item_id": "245102",
-    "title_id": "145297",
-    "title": "Pitcher plant traps and floral anatomy",
-    "description": "Pitcher plant traps and floral anatomy.\n\nSource\nGeorge Engelmann : Miscellaneous notes. Engelmann, George. Biodiversity Heritage Library.\nhttps://www.biodiversitylibrary.org/page/55372385\nDigitised by Internet Archive.\n\nRights: Public domain. The BHL considers that this work is no longer under copyright protection.\n\nPresented as scanned, with no added text or digital retouching.",
-    "citation": "George Engelmann : Miscellaneous notes. Engelmann, George. Biodiversity Heritage Library.",
-    "page_url": "https://www.biodiversitylibrary.org/page/55372385",
-    "thumb_url": "https://www.biodiversitylibrary.org/pagethumb/55372385",
+    "page_id": "55715760",
+    "item_id": "247859",
+    "title_id": "147243",
+    "title": "George Engelmann : botanical notebook 51 : Pinus",
+    "description": "Source\nGeorge Engelmann : botanical notebook 51 : Pinus. Engelmann, George. Biodiversity Heritage Library.\nhttps://www.biodiversitylibrary.org/page/55715760\nDigitised by Internet Archive.\n\nRights: Public domain. The BHL considers that this work is no longer under copyright protection.\n\nPresented as scanned, with no added text or digital retouching.",
+    "citation": "George Engelmann : botanical notebook 51 : Pinus. Engelmann, George. Biodiversity Heritage Library.",
+    "page_url": "https://www.biodiversitylibrary.org/page/55715760",
+    "thumb_url": "https://www.biodiversitylibrary.org/pagethumb/55715760",
     "subject": "Botanical illustration",
     "rights": "Public domain. The BHL considers that this work is no longer under copyright protection.",
     "license": "",
     "licence_reason": "public-domain status 'Public domain. The BHL considers that this work is no longer under copyright protection.'",
     "source_size": [
-      3900,
-      5195
+      3257,
+      3065
     ],
     "plate_size": [
       950,
-      1265
+      894
     ],
     "fill_color": [
-      189,
-      188,
-      172
+      254,
+      255,
+      240
     ],
     "upscaled": false,
     "letterbox": "sampled_paper",
     "duration_seconds": 2.0,
     "candidate": {
-      "page_id": "55372385",
-      "item_id": "245102",
-      "title_id": "145297",
-      "title": "George Engelmann : Miscellaneous notes",
-      "year": "",
-      "publisher": "",
-      "authors": [
-        "Engelmann, George"
-      ],
-      "page_types": [
-        "Illustration"
-      ],
-      "rights": "Public domain. The BHL considers that this work is no longer under copyright protection.",
-      "license_name": "",
-      "license_url": "",
-      "source": "Internet Archive",
-      "subject": "Botanical illustration"
-    },
-    "inspected": true,
-    "scan_quality": 7,
-    "caption_embedded": true,
-    "species_name_visible": false,
-    "is_spread": false,
-    "subject_summary": "Pitcher plant traps and floral anatomy",
-    "vision_issues": [
-      "visible ruler at bottom",
-      "faint stains/bleed-through",
-      "handwritten labels on plate"
-    ],
-    "caption_mode": "log_only",
-    "image_path": "/home/runner/work/botanical-shorts/botanical-shorts/build/20260805-55372385.png"
-  },
-  {
-    "page_id": "56100870",
-    "item_id": "251697",
-    "title_id": "145699",
-    "title": "George Engelmann : botanical notebook 60 : Characeae, Fungi, microscopic pathology, notes and obser…",
-    "description": "Source\nGeorge Engelmann : botanical notebook 60 : Characeae, Fungi, microscopic pathology, notes and observations. Engelmann, George. Biodiversity Heritage Library.\nhttps://www.biodiversitylibrary.org/page/56100870\nDigitised by Internet Archive.\n\nRights: Public domain. The BHL considers that this work is no longer under copyright protection.\n\nPresented as scanned, with no added text or digital retouching.",
-    "citation": "George Engelmann : botanical notebook 60 : Characeae, Fungi, microscopic pathology, notes and observations. Engelmann, George. Biodiversity Heritage Library.",
-    "page_url": "https://www.biodiversitylibrary.org/page/56100870",
-    "thumb_url": "https://www.biodiversitylibrary.org/pagethumb/56100870",
-    "subject": "Botanical illustration",
-    "rights": "Public domain. The BHL considers that this work is no longer under copyright protection.",
-    "license": "",
-    "licence_reason": "public-domain status 'Public domain. The BHL considers that this work is no longer under copyright protection.'",
-    "source_size": [
-      4176,
-      5666
-    ],
-    "plate_size": [
-      950,
-      1289
-    ],
-    "fill_color": [
-      236,
-      236,
-      229
-    ],
-    "upscaled": false,
-    "letterbox": "sampled_paper",
-    "duration_seconds": 2.0,
-    "candidate": {
-      "page_id": "56100870",
-      "item_id": "251697",
-      "title_id": "145699",
-      "title": "George Engelmann : botanical notebook 60 : Characeae, Fungi, microscopic pathology, notes and observations",
+      "page_id": "55715760",
+      "item_id": "247859",
+      "title_id": "147243",
+      "title": "George Engelmann : botanical notebook 51 : Pinus",
       "year": "",
       "publisher": "",
       "authors": [
@@ -291,39 +226,90 @@
       "subject": "Botanical illustration"
     },
     "inspected": false,
-    "image_path": "/home/runner/work/botanical-shorts/botanical-shorts/build/20260805-56100870.png"
+    "image_path": "/home/runner/work/botanical-shorts/botanical-shorts/build/20260805-55715760.png"
   },
   {
-    "page_id": "55838420",
-    "item_id": "249155",
-    "title_id": "148256",
-    "title": "George Engelmann : botanical notebook 52 : Pinus",
-    "description": "Source\nGeorge Engelmann : botanical notebook 52 : Pinus. Engelmann, George. Biodiversity Heritage Library.\nhttps://www.biodiversitylibrary.org/page/55838420\nDigitised by Internet Archive.\n\nRights: Public domain. The BHL considers that this work is no longer under copyright protection.\n\nPresented as scanned, with no added text or digital retouching.",
-    "citation": "George Engelmann : botanical notebook 52 : Pinus. Engelmann, George. Biodiversity Heritage Library.",
-    "page_url": "https://www.biodiversitylibrary.org/page/55838420",
-    "thumb_url": "https://www.biodiversitylibrary.org/pagethumb/55838420",
+    "page_id": "56100770",
+    "item_id": "251693",
+    "title_id": "145636",
+    "title": "George Engelmann : botanical notebook 59 : Isoetes",
+    "description": "Source\nGeorge Engelmann : botanical notebook 59 : Isoetes. Engelmann, George. Biodiversity Heritage Library.\nhttps://www.biodiversitylibrary.org/page/56100770\nDigitised by Internet Archive.\n\nRights: Public domain. The BHL considers that this work is no longer under copyright protection.\n\nPresented as scanned, with no added text or digital retouching.",
+    "citation": "George Engelmann : botanical notebook 59 : Isoetes. Engelmann, George. Biodiversity Heritage Library.",
+    "page_url": "https://www.biodiversitylibrary.org/page/56100770",
+    "thumb_url": "https://www.biodiversitylibrary.org/pagethumb/56100770",
     "subject": "Botanical illustration",
     "rights": "Public domain. The BHL considers that this work is no longer under copyright protection.",
     "license": "",
     "licence_reason": "public-domain status 'Public domain. The BHL considers that this work is no longer under copyright protection.'",
     "source_size": [
-      4524,
-      5727
+      3311,
+      3017
     ],
     "plate_size": [
       950,
-      1203
+      866
     ],
     "fill_color": [
-      253,
+      250,
       254,
-      244
+      240
     ],
     "upscaled": false,
     "letterbox": "sampled_paper",
     "duration_seconds": 2.0,
     "candidate": {
-      "page_id": "55838420",
+      "page_id": "56100770",
+      "item_id": "251693",
+      "title_id": "145636",
+      "title": "George Engelmann : botanical notebook 59 : Isoetes",
+      "year": "",
+      "publisher": "",
+      "authors": [
+        "Engelmann, George"
+      ],
+      "page_types": [
+        "Illustration"
+      ],
+      "rights": "Public domain. The BHL considers that this work is no longer under copyright protection.",
+      "license_name": "",
+      "license_url": "",
+      "source": "Internet Archive",
+      "subject": "Botanical illustration"
+    },
+    "inspected": false,
+    "image_path": "/home/runner/work/botanical-shorts/botanical-shorts/build/20260805-56100770.png"
+  },
+  {
+    "page_id": "55838426",
+    "item_id": "249155",
+    "title_id": "148256",
+    "title": "George Engelmann : botanical notebook 52 : Pinus",
+    "description": "Source\nGeorge Engelmann : botanical notebook 52 : Pinus. Engelmann, George. Biodiversity Heritage Library.\nhttps://www.biodiversitylibrary.org/page/55838426\nDigitised by Internet Archive.\n\nRights: Public domain. The BHL considers that this work is no longer under copyright protection.\n\nPresented as scanned, with no added text or digital retouching.",
+    "citation": "George Engelmann : botanical notebook 52 : Pinus. Engelmann, George. Biodiversity Heritage Library.",
+    "page_url": "https://www.biodiversitylibrary.org/page/55838426",
+    "thumb_url": "https://www.biodiversitylibrary.org/pagethumb/55838426",
+    "subject": "Botanical illustration",
+    "rights": "Public domain. The BHL considers that this work is no longer under copyright protection.",
+    "license": "",
+    "licence_reason": "public-domain status 'Public domain. The BHL considers that this work is no longer under copyright protection.'",
+    "source_size": [
+      3694,
+      5973
+    ],
+    "plate_size": [
+      950,
+      1536
+    ],
+    "fill_color": [
+      220,
+      218,
+      195
+    ],
+    "upscaled": false,
+    "letterbox": "sampled_paper",
+    "duration_seconds": 2.0,
+    "candidate": {
+      "page_id": "55838426",
       "item_id": "249155",
       "title_id": "148256",
       "title": "George Engelmann : botanical notebook 52 : Pinus",
@@ -342,57 +328,6 @@
       "subject": "Botanical illustration"
     },
     "inspected": false,
-    "image_path": "/home/runner/work/botanical-shorts/botanical-shorts/build/20260805-55838420.png"
-  },
-  {
-    "page_id": "55897636",
-    "item_id": "249663",
-    "title_id": "148578",
-    "title": "George Engelmann : botanical notebook 47 : Coniferae (Pinaceae)",
-    "description": "Source\nGeorge Engelmann : botanical notebook 47 : Coniferae (Pinaceae). Engelmann, George. Biodiversity Heritage Library.\nhttps://www.biodiversitylibrary.org/page/55897636\nDigitised by Internet Archive.\n\nRights: Public domain. The BHL considers that this work is no longer under copyright protection.\n\nPresented as scanned, with no added text or digital retouching.",
-    "citation": "George Engelmann : botanical notebook 47 : Coniferae (Pinaceae). Engelmann, George. Biodiversity Heritage Library.",
-    "page_url": "https://www.biodiversitylibrary.org/page/55897636",
-    "thumb_url": "https://www.biodiversitylibrary.org/pagethumb/55897636",
-    "subject": "Botanical illustration",
-    "rights": "Public domain. The BHL considers that this work is no longer under copyright protection.",
-    "license": "",
-    "licence_reason": "public-domain status 'Public domain. The BHL considers that this work is no longer under copyright protection.'",
-    "source_size": [
-      3230,
-      2987
-    ],
-    "plate_size": [
-      950,
-      879
-    ],
-    "fill_color": [
-      254,
-      255,
-      242
-    ],
-    "upscaled": false,
-    "letterbox": "sampled_paper",
-    "duration_seconds": 2.0,
-    "candidate": {
-      "page_id": "55897636",
-      "item_id": "249663",
-      "title_id": "148578",
-      "title": "George Engelmann : botanical notebook 47 : Coniferae (Pinaceae)",
-      "year": "",
-      "publisher": "",
-      "authors": [
-        "Engelmann, George"
-      ],
-      "page_types": [
-        "Illustration"
-      ],
-      "rights": "Public domain. The BHL considers that this work is no longer under copyright protection.",
-      "license_name": "",
-      "license_url": "",
-      "source": "Internet Archive",
-      "subject": "Botanical illustration"
-    },
-    "inspected": false,
-    "image_path": "/home/runner/work/botanical-shorts/botanical-shorts/build/20260805-55897636.png"
+    "image_path": "/home/runner/work/botanical-shorts/botanical-shorts/build/20260805-55838426.png"
   }
 ]
