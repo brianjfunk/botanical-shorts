@@ -22,6 +22,14 @@ brand accounts), the consent screen shows a channel picker. **Pick the channel
 you actually want to publish to** -- the refresh token is bound to that choice,
 and an upload to the wrong channel still returns a perfectly valid video id.
 
+A token is bound to the channel *id*, not its handle or display name, so
+renaming a channel never requires re-running this. Only a scope change does.
+
+Do NOT revoke the existing grant before running this. Re-consenting issues a
+new refresh token and leaves the old one working; revoking first has already
+caused one invalid_grant outage on this project when the new token had not yet
+been pasted into the secret.
+
 You do not need to add yourself as a test user; as project owner you already
 have access, and the console rejects the attempt as ineligible.
 """
@@ -37,12 +45,17 @@ except ImportError:  # pragma: no cover
     sys.exit("pip install google-auth-oauthlib first")
 
 # youtube.upload alone is write-only: it can publish but cannot read back which
-# channel it published to. Adding youtube.readonly lets the preflight name the
-# channel before a batch runs -- the difference between catching a wrong-channel
-# upload now and discovering it after 30 videos.
+# channel it published to -- which is how 19 videos reached the wrong channel
+# unnoticed. `youtube` covers reading the channel back AND managing playlists
+# (playlistItems.insert), which auto-assigning each Short to its category
+# playlist needs. It subsumes youtube.readonly, so that is not listed.
+#
+# Note this is a wider grant than upload-only: a token with `youtube` can
+# modify and delete videos, not merely add them. The pipeline only ever calls
+# insert. Keep it that way.
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
-    "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/youtube",
 ]
 
 
