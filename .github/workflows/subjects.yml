@@ -1,0 +1,83 @@
+name: Subjects
+
+# Check that a subject heading actually carries titles before trusting it.
+#
+# This is the trap that cost the channel weeks of pool depth: "Botany, Pictorial
+# works" and "Plants Pictorial works" sat in config returning zero title-level
+# publications, and nothing failed, because BHL answers an unknown heading
+# exactly as it answers a real but thin one -- HTTP 200 and an empty list. No
+# new category goes into settings.yaml until it has appeared here with a count
+# beside it.
+#
+# Costs nothing but BHL calls: no images are fetched and no vision is spent.
+
+on:
+  workflow_dispatch:
+    inputs:
+      terms:
+        description: "search terms, space separated (quote multi-word ones)"
+        type: string
+        default: "Birds Insects Fishes Reptiles Fungi Marine Corals"
+      per_term:
+        description: "how many candidate headings to test per term"
+        type: string
+        default: "8"
+
+concurrency:
+  group: subjects
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  subjects:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Inputs travel through the environment, never interpolated into the
+      # script -- a term like "Reptiles, Fossil" is free text and would
+      # otherwise be shell. That exact string broke sample-plates once.
+      - name: Probe the headings
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+          TERMS: ${{ inputs.terms }}
+          PER_TERM: ${{ inputs.per_term }}
+        run: |
+          mkdir -p reports
+          # Word-split deliberately: TERMS is a list of terms, and quoted
+          # multi-word terms survive because the CLI takes them as separate
+          # argv entries.
+          eval "set -- $TERMS"
+          python -m botanical_shorts.cli -v find-subjects \
+            --per-term "${PER_TERM:-8}" "$@" 2>&1 | tee reports/subjects.txt
+
+      - name: Commit the report
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reports/ 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
+          git commit -m "Subject probe ($(date -u +%Y-%m-%d))"
+          for attempt in 1 2 3; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
+              git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $((attempt * 4))
+          done
+          echo "::error::could not push the report"
+          exit 1
