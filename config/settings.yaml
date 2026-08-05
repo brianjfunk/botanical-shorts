@@ -66,10 +66,17 @@ source:
   # lock did -- one plate per work per batch below, and the human review pass,
   # which would see both side by side.
   title_cooldown: 0
-  # The useful half of the cooldown, scoped to a batch instead of to months:
-  # one plate per work per batch, so a week's uploads never carry two plates
-  # from the same serial. Expires with the batch and locks nothing out.
-  one_plate_per_title_per_batch: true
+  # The useful half of the cooldown, scoped to a batch instead of to months, so
+  # a week's uploads never carry a run of near-identical plates from one serial.
+  # Expires with the batch and locks nothing out of the pool.
+  #
+  # A few rather than one. The pool audit found 36 passing plates spread across
+  # only four works -- the good material is concentrated -- so a cap of one put
+  # a hard ceiling of four plates on every batch, which is precisely what the
+  # first real batch produced. Three keeps a batch varied without starving it,
+  # and a genuine repeat would in any case be obvious on the review page, where
+  # both plates sit side by side. 0 = unlimited.
+  max_plates_per_title_per_batch: 3
 
 license:
   # Allowlist, matched case-insensitively as substrings against BHL's

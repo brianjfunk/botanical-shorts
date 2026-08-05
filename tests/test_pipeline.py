@@ -968,7 +968,7 @@ def test_shipped_config_carries_the_ported_gates():
     # passed 30% of what it walked while the batch selector found two plates in
     # ten attempts. Its useful half survives as a per-batch rule.
     assert cfg.source.title_cooldown == 0
-    assert cfg.source.one_plate_per_title_per_batch is True
+    assert cfg.source.max_plates_per_title_per_batch == 3
 
 
 def test_black_framed_scan_is_rejected_before_framing():
@@ -1885,7 +1885,7 @@ def test_a_batch_caps_how_many_uninspected_plates_it_will_offer(tmp_path, monkey
     assert all(e["inspected"] is False for e in batch)
 
 
-def test_a_batch_takes_at_most_one_plate_from_any_work(tmp_path, monkeypatch):
+def test_a_batch_caps_how_many_plates_one_work_contributes(tmp_path, monkeypatch):
     """The cooldown's useful half, scoped to a batch.
 
     Long serials reissued the same engraving across volumes -- which is how two
@@ -1927,12 +1927,14 @@ def test_a_batch_takes_at_most_one_plate_from_any_work(tmp_path, monkeypatch):
         cfg, source=dataclasses.replace(cfg.source, max_items_per_title=3)
     )
 
-    batch = pipeline.build_batch(cfg, count=3)
-    assert len(batch) == 1, "three volumes of one serial must yield one plate"
+    capped = dataclasses.replace(
+        cfg, source=dataclasses.replace(cfg.source, max_plates_per_title_per_batch=2)
+    )
+    assert len(pipeline.build_batch(capped, count=3)) == 2, "the cap binds"
 
     # And with the rule off, the same pool gives the near-repeats back.
     loose = dataclasses.replace(
-        cfg, source=dataclasses.replace(cfg.source, one_plate_per_title_per_batch=False)
+        cfg, source=dataclasses.replace(cfg.source, max_plates_per_title_per_batch=0)
     )
     assert len(pipeline.build_batch(loose, count=3)) == 3
 
