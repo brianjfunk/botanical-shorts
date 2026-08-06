@@ -2299,12 +2299,16 @@ def test_the_daily_cap_ends_a_run_without_losing_what_uploaded(tmp_path, monkeyp
 # artefact. Marine is one category built from seven headings, and Birds and
 # Ornithology are two headings for one category.
 
-def test_the_shipped_categories_are_the_seven_agreed():
+def test_the_shipped_categories_are_the_six_that_survived_review():
+    """Ichthyology was dropped: 11 plates harvested, 11 rejected. Three of its
+    four works were angling handbooks, and Brian's read on the rest was that a
+    fish in profile "looks like a dead fish on a table"."""
     cfg = load_config()
     assert set(cfg.source.categories) == {
         "Botanical", "Ornithology", "Entomology", "Marine",
-        "Ichthyology", "Herpetology", "Mycology",
+        "Herpetology", "Mycology",
     }
+    assert "Ichthyology" not in cfg.source.categories
     # Marine absorbs jellyfish and diatoms, which is what Brian asked for and
     # which the subject probe confirmed exist (40 and 36 titles).
     assert "Jellyfishes" in cfg.source.categories["Marine"]
@@ -2558,3 +2562,34 @@ def test_the_review_page_covers_everything_pending(tmp_path, monkeypatch):
     cfg = _cfg_for_stub(history_path=tmp_path / "h.json")
     rebuilt = h.frame_entry(cfg, q.entries[0])
     assert rebuilt.size == (cfg.image.width, cfg.image.height)
+
+
+# -- a review has three answers, not two -------------------------------------
+#
+# Brian's second pass rejected the plates he had earlier flagged as good but
+# needing rotation or splitting -- which would have retired them permanently
+# for a fault the pipeline is about to fix. "I'd like to hold the fixable ones.
+# There are some very nice ones in there."
+
+def test_held_plates_stay_pending(tmp_path):
+    from botanical_shorts.queue import Queue
+
+    q = Queue(tmp_path / "q.json")
+    q.add([{"page_id": p, "title_id": "T"} for p in ("good", "bad", "sideways")])
+
+    q.resolve({"bad", "sideways"}, order=[], held_pages={"sideways"})
+    by_page = {e["page_id"]: e["status"] for e in q.entries}
+
+    assert by_page == {"good": "approved", "bad": "rejected", "sideways": "pending"}
+
+
+def test_a_held_plate_is_never_also_rejected(tmp_path):
+    """Holding wins over rejecting: a rejection is written to history and can
+    never be undone, so the ambiguous case must fail towards keeping."""
+    from botanical_shorts.queue import Queue
+
+    q = Queue(tmp_path / "q.json")
+    q.add([{"page_id": "sideways", "title_id": "T"}])
+
+    q.resolve({"sideways"}, order=[], held_pages={"sideways"})
+    assert q.entries[0]["status"] == "pending"

@@ -81,8 +81,19 @@ class Queue:
             added += 1
         return added
 
-    def resolve(self, rejected_pages: set[str], *, order: list[dict[str, Any]]) -> tuple[int, int]:
+    def resolve(
+        self,
+        rejected_pages: set[str],
+        *,
+        order: list[dict[str, Any]],
+        held_pages: set[str] | None = None,
+    ) -> tuple[int, int]:
         """Settle a review: mark rejections, approve the rest, fix the order.
+
+        ``held_pages`` stay pending. A review has three answers, not two: yes,
+        no, and "good but not yet" -- a plate drawn sideways is worth
+        publishing once it can be rotated, and rejecting it would retire it
+        permanently for a fault the pipeline is about to fix.
 
         Keyed by page id rather than by position. Positions were a real hazard:
         the review page numbered only the plates one harvest had added, while
@@ -94,10 +105,12 @@ class Queue:
         in, stored as an explicit rank so it survives the file being rewritten.
         """
         rejected_pages = {str(p) for p in rejected_pages}
+        held = {str(p) for p in (held_pages or ())}
         for entry in self.with_status(PENDING):
-            entry["status"] = (
-                REJECTED if str(entry.get("page_id")) in rejected_pages else APPROVED
-            )
+            page_id = str(entry.get("page_id"))
+            if page_id in held:
+                continue
+            entry["status"] = REJECTED if page_id in rejected_pages else APPROVED
 
         for rank, entry in enumerate(order):
             entry["publish_rank"] = rank

@@ -31,6 +31,10 @@ on:
         description: "approve only: the line from the review page"
         type: string
         default: "approve all"
+      hold:
+        description: "approve only: plates to leave pending, e.g. '62,69,85'"
+        type: string
+        default: ""
       count:
         description: "publish-next only: how many to upload"
         type: string
@@ -88,7 +92,9 @@ jobs:
         if: inputs.mode == 'approve'
         env:
           DECISION: ${{ inputs.decision }}
-        run: python -m botanical_shorts.cli -v approve "$DECISION"
+          HOLD: ${{ inputs.hold }}
+        run: |
+          python -m botanical_shorts.cli -v approve "$DECISION" ${HOLD:+--hold "$HOLD"}
 
       - name: Publish the next plates
         if: inputs.mode == 'publish-next'

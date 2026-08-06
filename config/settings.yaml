@@ -38,8 +38,15 @@ source:
       - "Corals"
       - "Jellyfishes"
       - "Diatoms"
-    Ichthyology:
-      - "Fishes"
+    # Ichthyology dropped after review: 11 plates harvested, 11 rejected.
+    # Three of its four works were angling handbooks -- halftone photographs
+    # and plain figures -- and Brian's read on the rest was that "even a nicely
+    # illustrated picture of a fish in profile looks like a dead fish on a
+    # table". A colour-plate fish book may well exist in those 1,692 titles,
+    # but the "Fishes" heading at large does not find one, and harvesting it
+    # blind spends a vision budget every refill to produce nothing.
+    #   Ichthyology:
+    #     - "Fishes"
     Herpetology:
       - "Reptiles"
       - "Amphibians"

@@ -746,6 +746,7 @@ def cmd_approve(args: argparse.Namespace) -> int:
 
     try:
         rejected_idx = parse_review_reply(args.decision)
+        held_idx = parse_review_reply(args.hold or "") if args.hold else set()
     except ValueError as exc:
         print(f"could not read that reply: {exc}", file=sys.stderr)
         return 2
@@ -758,9 +759,17 @@ def cmd_approve(args: argparse.Namespace) -> int:
         )
         return 2
 
-    rejected_pages = {shown_pages[i] for i in rejected_idx}
+    held_pages = {shown_pages[i] for i in held_idx if i < len(shown_pages)}
+    # A held plate is neither approved nor retired, so it must not appear in
+    # either list -- least of all the rejects, which are written to history and
+    # can never be offered again.
+    rejected_pages = {shown_pages[i] for i in rejected_idx} - held_pages
     rejects = [e for e in pending if str(e["page_id"]) in rejected_pages]
-    keepers = [e for e in pending if str(e["page_id"]) not in rejected_pages]
+    keepers = [
+        e for e in pending
+        if str(e["page_id"]) not in rejected_pages
+        and str(e["page_id"]) not in held_pages
+    ]
 
     # Retired before anything else touches the queue: a rejected plate must
     # never be offered again even if the rest of this command fails.
@@ -768,10 +777,10 @@ def cmd_approve(args: argparse.Namespace) -> int:
         harvest_mod.retire(cfg, rejects)
 
     order = harvest_mod.publish_order(q.with_status(APPROVED) + keepers, seed=args.seed)
-    approved, rejected = q.resolve(rejected_pages, order=order)
+    approved, rejected = q.resolve(rejected_pages, order=order, held_pages=held_pages)
     q.save()
 
-    print(f"approved {len(keepers)}, rejected {rejected}")
+    print(f"approved {len(keepers)}, rejected {rejected}, held {len(held_pages)}")
     print(f"   queue now: {q.counts()}")
     return 0
 
@@ -1250,6 +1259,12 @@ def main(argv: list[str] | None = None) -> int:
 
     p_appr = sub.add_parser("approve", help="settle a review and order the queue")
     p_appr.add_argument("decision", help="the line from the review page")
+    p_appr.add_argument(
+        "--hold",
+        help="plates to leave pending rather than approve or retire, same format "
+             "as the decision line -- for images worth publishing once the "
+             "pipeline can handle them",
+    )
     p_appr.add_argument(
         "--seed", type=int, help="fix the shuffle, for reproducing an order exactly"
     )
