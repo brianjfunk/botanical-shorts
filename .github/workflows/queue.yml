@@ -17,7 +17,7 @@ on:
       mode:
         description: "which half of the loop to run"
         type: choice
-        options: [harvest, approve, publish-next]
+        options: [harvest, render-review, approve, publish-next]
         default: harvest
       per_category:
         description: "harvest only: candidates to walk per category"
@@ -77,6 +77,12 @@ jobs:
         run: |
           python -m botanical_shorts.cli -v harvest \
             --per-category "${PER_CATEGORY:-250}" ${ONLY:+--only "$ONLY"}
+
+      - name: Rebuild the review page
+        if: inputs.mode == 'render-review'
+        env:
+          BHL_API_KEY: ${{ secrets.BHL_API_KEY }}
+        run: python -m botanical_shorts.cli -v render-review
 
       - name: Approve
         if: inputs.mode == 'approve'

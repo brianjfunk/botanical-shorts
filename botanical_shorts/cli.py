@@ -613,6 +613,63 @@ def _review_order_path(cfg) -> Path:
     return cfg.history_path.parent / "review_order.json"
 
 
+def _render_review_page(cfg, q, out: Path, *, fresh: dict | None = None) -> list:
+    """Write the review page for everything pending, and record its order.
+
+    Separate from harvesting because the two are separate jobs: a harvest that
+    adds nothing still leaves earlier plates waiting to be looked at, and a
+    page can need rebuilding after a code change with no new plates involved.
+    Coupling them meant a harvest that found nothing exited before rendering.
+
+    ``fresh`` supplies images already in memory; anything else is re-derived
+    from its stored page and verdict, which costs one download each.
+    """
+    import requests as _requests
+
+    from . import harvest as harvest_mod
+    from . import review
+
+    fresh = fresh or {}
+    session = _requests.Session()
+    shown, images = [], []
+    for entry in q.with_status("pending"):
+        page_id = str(entry["page_id"])
+        try:
+            images.append(
+                fresh[page_id]
+                if page_id in fresh
+                else harvest_mod.frame_entry(cfg, entry, session)
+            )
+        except Exception as exc:
+            log.warning("could not rebuild page %s for review: %s", page_id, exc)
+            continue
+        shown.append(entry)
+
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "review.html").write_text(review.render(shown, images))
+    # The exact order the page numbered, so a reply resolves to plates rather
+    # than to positions in a list that may have changed since.
+    _review_order_path(cfg).write_text(
+        json.dumps([str(e["page_id"]) for e in shown], indent=2)
+    )
+    return shown
+
+
+def cmd_render_review(args: argparse.Namespace) -> int:
+    """Rebuild the review page from the queue, harvesting nothing."""
+    from .queue import Queue
+
+    cfg = load_config(args.config)
+    q = Queue(_queue_path(cfg))
+    if not q.with_status("pending"):
+        print("nothing is pending review", file=sys.stderr)
+        return 1
+
+    shown = _render_review_page(cfg, q, Path(args.out or "review"))
+    print(f"\nreview page shows {len(shown)} pending plates")
+    return 0
+
+
 def cmd_harvest(args: argparse.Namespace) -> int:
     """Walk the pool once, judge everything, and render the queue for review.
 
@@ -638,40 +695,22 @@ def cmd_harvest(args: argparse.Namespace) -> int:
     for line in pipeline.summarise_rejections(result.rejections):
         log.info("%s", line)
 
-    if not result.entries:
-        print("the harvest found nothing new", file=sys.stderr)
-        return 1
-
     added = q.add(result.entries)
     q.save()
+    if not added:
+        # Not an error, and not a reason to skip the page: plates from an
+        # earlier harvest may still be waiting to be looked at. Rendering used
+        # to return early here, which is how a run that added nothing left the
+        # review page describing a stale set.
+        log.info("no new plates; re-rendering the page for what is already pending")
 
     # Every pending plate, not just this harvest's. A second harvest used to
     # leave the page showing its own additions while approve numbered the whole
     # pending list, so the reply pointed at the wrong plates entirely. Images
     # for earlier harvests are re-derived, which costs one download each and
     # keeps the page and the reply describing the same thing.
-    import requests as _requests
-
-    session = _requests.Session()
     fresh = {str(e["page_id"]): img for e, img in zip(result.entries, result.images)}
-    shown, images = [], []
-    for entry in q.with_status("pending"):
-        page_id = str(entry["page_id"])
-        try:
-            images.append(fresh[page_id] if page_id in fresh else harvest_mod.frame_entry(cfg, entry, session))
-        except Exception as exc:
-            log.warning("could not rebuild page %s for review: %s", page_id, exc)
-            continue
-        shown.append(entry)
-
-    out = Path(args.out or "review")
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "review.html").write_text(review.render(shown, images))
-    # The exact order the page numbered, so the reply can be resolved to plates
-    # rather than to positions in a list that may have changed since.
-    _review_order_path(cfg).write_text(
-        json.dumps([str(e["page_id"]) for e in shown], indent=2)
-    )
+    shown = _render_review_page(cfg, q, Path(args.out or "review"), fresh=fresh)
 
     print(f"\nharvested {added} new plates ({result.vision_calls} vision calls)")
     for name, n in by_cat.most_common():
@@ -1204,6 +1243,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_harv.add_argument("--out", help="output directory for the review page")
     p_harv.set_defaults(func=cmd_harvest)
+
+    p_render = sub.add_parser("render-review", help="rebuild the review page from the queue")
+    p_render.add_argument("--out", help="output directory for the review page")
+    p_render.set_defaults(func=cmd_render_review)
 
     p_appr = sub.add_parser("approve", help="settle a review and order the queue")
     p_appr.add_argument("decision", help="the line from the review page")
