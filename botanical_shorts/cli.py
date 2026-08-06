@@ -829,6 +829,51 @@ def cmd_publish_next(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_go_public(args: argparse.Namespace) -> int:
+    """Flip already-uploaded videos from private to public.
+
+    Uploads land private with no schedule, so making them visible is a separate,
+    deliberate act. Operates on what history says is live rather than on a
+    hand-typed list, so it cannot touch a video this pipeline did not create.
+    """
+    from . import youtube
+    from .history import History
+    from .queue import PUBLISHED, Queue
+
+    cfg = load_config(args.config)
+    q = Queue(_queue_path(cfg))
+    q.reconcile(History(cfg.history_path))
+
+    entries = q.with_status(PUBLISHED)
+    if args.video_ids:
+        wanted = {v.strip() for v in args.video_ids.split(",") if v.strip()}
+        entries = [e for e in entries if str(e.get("video_id")) in wanted]
+    video_ids = [str(e["video_id"]) for e in entries if e.get("video_id")]
+
+    if not video_ids:
+        print("no uploaded videos to change", file=sys.stderr)
+        return 1
+
+    print(f"setting {len(video_ids)} video(s) to {args.privacy}:")
+    for entry in entries:
+        print(f"   {entry.get('video_id')}  {entry.get('title','')[:60]}")
+
+    creds = youtube.build_credentials(
+        require_env("YOUTUBE_CLIENT_ID"),
+        require_env("YOUTUBE_CLIENT_SECRET"),
+        require_env("YOUTUBE_REFRESH_TOKEN"),
+    )
+    results = youtube.set_privacy(video_ids, privacy=args.privacy, credentials=creds)
+
+    print()
+    failures = 0
+    for video_id, outcome in results:
+        print(f"   {video_id}  {outcome}")
+        if outcome.startswith("failed") or outcome.startswith("not found"):
+            failures += 1
+    return 1 if failures else 0
+
+
 def cmd_audit_pool(args: argparse.Namespace) -> int:
     """Lay out a slice of the pool with each candidate's verdict, and publish nothing.
 
@@ -1252,6 +1297,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_harv.add_argument("--out", help="output directory for the review page")
     p_harv.set_defaults(func=cmd_harvest)
+
+    p_pub = sub.add_parser("go-public", help="flip uploaded videos from private to public")
+    p_pub.add_argument(
+        "--privacy", default="public", choices=["public", "unlisted", "private"]
+    )
+    p_pub.add_argument(
+        "--video-ids", help="comma-separated ids; default is everything already uploaded"
+    )
+    p_pub.set_defaults(func=cmd_go_public)
 
     p_render = sub.add_parser("render-review", help="rebuild the review page from the queue")
     p_render.add_argument("--out", help="output directory for the review page")

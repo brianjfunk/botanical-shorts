@@ -17,7 +17,7 @@ on:
       mode:
         description: "which half of the loop to run"
         type: choice
-        options: [harvest, render-review, approve, publish-next]
+        options: [harvest, render-review, approve, publish-next, go-public]
         default: harvest
       per_category:
         description: "harvest only: candidates to walk per category"
@@ -106,6 +106,14 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           COUNT: ${{ inputs.count }}
         run: python -m botanical_shorts.cli -v publish-next --count "${COUNT:-10}"
+
+      - name: Make uploaded videos public
+        if: inputs.mode == 'go-public'
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+        run: python -m botanical_shorts.cli -v go-public --privacy public
 
       # Always, and before anything after it can fail: the queue records what
       # is approved and what already went live. Losing it means republishing.

@@ -232,3 +232,55 @@ def upload_video(
         studio_url=f"https://studio.youtube.com/video/{video_id}/edit",
         publish_at=publish_at or "",
     )
+
+
+def set_privacy(
+    video_ids: list[str],
+    *,
+    privacy: str,
+    credentials: Credentials,
+) -> list[tuple[str, str]]:
+    """Change the privacy status of already-uploaded videos.
+
+    Reads each video's current status and sends it back with only
+    ``privacyStatus`` altered. That round trip is not ceremony: videos.update
+    REPLACES the parts it is given, so sending a status block containing just
+    privacyStatus would silently reset everything else in it -- including
+    selfDeclaredMadeForKids, which is a legal declaration, and the licence and
+    embeddable flags.
+
+    A scheduled publish time is cleared at the same time, since a video cannot
+    be public and still waiting for its own publishAt.
+
+    Returns (video_id, outcome) per video. One failure does not stop the rest:
+    these are independent, externally-visible changes, and a partial result the
+    caller can see beats an exception that hides which ones went through.
+    """
+    youtube = build("youtube", "v3", credentials=credentials, cache_discovery=False)
+    results: list[tuple[str, str]] = []
+
+    for video_id in video_ids:
+        try:
+            found = youtube.videos().list(part="status", id=video_id).execute()
+            items = found.get("items") or []
+            if not items:
+                results.append((video_id, "not found (deleted, or not on this channel)"))
+                continue
+
+            status = dict(items[0]["status"])
+            if status.get("privacyStatus") == privacy:
+                results.append((video_id, f"already {privacy}"))
+                continue
+
+            status["privacyStatus"] = privacy
+            status.pop("publishAt", None)
+            youtube.videos().update(
+                part="status", body={"id": video_id, "status": status}
+            ).execute()
+            results.append((video_id, privacy))
+            log.info("%s -> %s", video_id, privacy)
+        except HttpError as exc:
+            log.error("%s could not be updated: %s", video_id, exc)
+            results.append((video_id, f"failed: {exc}"))
+
+    return results

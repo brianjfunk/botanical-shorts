@@ -2593,3 +2593,73 @@ def test_a_held_plate_is_never_also_rejected(tmp_path):
 
     q.resolve({"sideways"}, order=[], held_pages={"sideways"})
     assert q.entries[0]["status"] == "pending"
+
+
+# -- flipping uploaded videos to public --------------------------------------
+#
+# videos.update REPLACES the parts it is given. Sending a status block with
+# only privacyStatus would reset everything else in it -- including
+# selfDeclaredMadeForKids, which is a legal declaration.
+
+def test_going_public_preserves_the_rest_of_the_status_block():
+    pytest.importorskip("google.auth")
+    from botanical_shorts import youtube
+
+    sent = {}
+
+    class _Req:
+        def __init__(self, result): self.result = result
+        def execute(self): return self.result
+
+    class _Videos:
+        def list(self, **kw):
+            return _Req({"items": [{"status": {
+                "privacyStatus": "private",
+                "selfDeclaredMadeForKids": False,
+                "license": "youtube",
+                "embeddable": True,
+                "publishAt": "2026-08-06T12:00:00Z",
+            }}]})
+
+        def update(self, **kw):
+            sent.update(kw["body"])
+            return _Req({})
+
+    class _YT:
+        def videos(self): return _Videos()
+
+    youtube.build = lambda *a, **k: _YT()
+    out = youtube.set_privacy(["abc"], privacy="public", credentials=object())
+
+    assert out == [("abc", "public")]
+    assert sent["status"]["privacyStatus"] == "public"
+    # Everything else survived the round trip.
+    assert sent["status"]["selfDeclaredMadeForKids"] is False
+    assert sent["status"]["license"] == "youtube"
+    assert sent["status"]["embeddable"] is True
+    # A video cannot be public and still waiting for its own publishAt.
+    assert "publishAt" not in sent["status"]
+
+
+def test_a_video_already_public_is_left_alone():
+    pytest.importorskip("google.auth")
+    from botanical_shorts import youtube
+
+    calls = {"update": 0}
+
+    class _Req:
+        def __init__(self, r): self.r = r
+        def execute(self): return self.r
+
+    class _Videos:
+        def list(self, **kw):
+            return _Req({"items": [{"status": {"privacyStatus": "public"}}]})
+        def update(self, **kw):
+            calls["update"] += 1
+            return _Req({})
+
+    youtube.build = lambda *a, **k: type("Y", (), {"videos": lambda s: _Videos()})()
+    out = youtube.set_privacy(["abc"], privacy="public", credentials=object())
+
+    assert out == [("abc", "already public")]
+    assert calls["update"] == 0
